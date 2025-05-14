@@ -19,6 +19,8 @@ def generate_launch_description():
 
     package_name='my_bot' #<--- CHANGE ME
 
+
+
     rsp = IncludeLaunchDescription(
                 PythonLaunchDescriptionSource([os.path.join(
                     get_package_share_directory(package_name),'launch','rsp.launch.py'
@@ -78,9 +80,9 @@ def generate_launch_description():
 
     # Launch them all!
     return LaunchDescription([
+        world_arg,
         rsp,
         gazebo,
-        world_arg,
         spawn_entity,
         ros_gz_bridge,
     ])
