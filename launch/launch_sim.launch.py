@@ -33,9 +33,17 @@ def generate_launch_description():
         'gz_bridge.yaml'
     )
     ros_gz_bridge = Node(
+        #package="ros_gz_bridge",
+        #executable="parameter_bridge",
+        #parameters=[bridge_params]
         package="ros_gz_bridge",
         executable="parameter_bridge",
-        parameters=[bridge_params]
+        arguments=[
+            '--ros-args',
+            '--log-level', 'DEBUG',
+            '-p', f'config_file:={bridge_params}',
+        ],
+        output='screen'
     )
 
     default_world = os.path.join(
@@ -51,6 +59,14 @@ def generate_launch_description():
         )
     
     world = LaunchConfiguration('world')
+
+    teleop = Node(
+        package="teleop_twist_keyboard",
+        executable="teleop_twist_keyboard",
+        name="teleop_keyboard",
+        output="screen",
+        remappings=[('cmd_vel', 'cmd_vel')]
+    )
 
     # Include the Gazebo launch file, provided by the ros_gz_sim package
 
@@ -84,5 +100,6 @@ def generate_launch_description():
         rsp,
         gazebo,
         spawn_entity,
+        teleop,
         ros_gz_bridge,
     ])
