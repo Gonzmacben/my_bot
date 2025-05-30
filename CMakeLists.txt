@@ -44,6 +44,7 @@ ament_python_install_package(${PROJECT_NAME})
 
 install(PROGRAMS
   my_bot/x_test.py
+  my_bot/lidar_setup.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

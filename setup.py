@@ -22,6 +22,7 @@ setup(
     entry_points={
         'console_scripts': [
             'x_test = my_bot.x_test:main',
+            'lidar_setup = my_bot.lidar_setup:main',
         ],
     },
 )
