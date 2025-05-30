@@ -33,8 +33,18 @@ if(BUILD_TESTING)
 endif()
 
 install(
-  DIRECTORY config description launch meshes worlds
+  DIRECTORY config description launch meshes my_bot resource worlds
   DESTINATION share/${PROJECT_NAME}
+)
+
+
+# Support Python
+find_package(ament_cmake_python REQUIRED)
+ament_python_install_package(${PROJECT_NAME})
+
+install(PROGRAMS
+  my_bot/x_test.py
+  DESTINATION lib/${PROJECT_NAME}
 )
 
 ament_package()
