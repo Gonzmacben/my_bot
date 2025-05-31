@@ -23,6 +23,7 @@ setup(
         'console_scripts': [
             'x_test = my_bot.x_test:main',
             'lidar_setup = my_bot.lidar_setup:main',
+            'motor_bridge = my_bot.motor_bridge_node:main',
         ],
     },
 )

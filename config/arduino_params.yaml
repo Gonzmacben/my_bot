@@ -1,0 +1,21 @@
+port: /dev/ttyACM0
+baud: 57600
+timeout: 0.1
+
+rate: 50
+sensorstate_rate: 10
+
+use_base_controller: False   # You're handling control in ROS
+base_controller_rate: 10
+
+base_frame: base_link
+
+# === Motor + Encoder Parameters
+wheel_diameter: 0.1          # Adjust based on your wheels (in meters)
+wheel_track: 0.3             # Distance between wheels (in meters)
+encoder_resolution: 1440     # Depends on your encoders and gear ratio
+gear_reduction: 1.0          # 1.0 if encoders are on motor shaft
+motors_reversed: False       # True if they spin the wrong way
+
+# === Sensors (none, skip or leave empty)
+sensors: {}
