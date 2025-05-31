@@ -20,7 +20,7 @@ def main():
         rclpy.shutdown()
         return
 
-    def read_serial(timer_event):
+    def read_serial():
         if ser.in_waiting:
             try:
                 line = ser.readline().decode('utf-8').strip()
@@ -28,7 +28,7 @@ def main():
             except Exception as e:
                 node.get_logger().warn(f'Serial read error: {e}')
 
-    timer = node.create_timer(0.02, lambda timer_event: read_serial(timer_event))  # 50 Hz
+    timer = node.create_timer(0.02, read_serial)  # 50 Hz
 
     try:
         rclpy.spin(node)
