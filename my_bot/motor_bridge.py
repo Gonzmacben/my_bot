@@ -8,7 +8,7 @@ def main():
 
     node = Node('motor_bridge')
 
-    port = node.declare_parameter('port', '/dev/ttyACM0').value
+    port = node.declare_parameter('port', '/dev/ttyUSB0').value
     baud = node.declare_parameter('baud', 57600).value
     timeout = node.declare_parameter('timeout', 0.1).value
 

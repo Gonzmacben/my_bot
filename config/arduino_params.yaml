@@ -1,21 +1,32 @@
-port: /dev/ttyUSB0
+# Serial port configuration
+port: /dev/ttyUSB0        # Adjust if your Arduino appears elsewhere
 baud: 57600
-timeout: 0.1
 
-rate: 50
-sensorstate_rate: 10
+# General robot settings
+use_base_controller: True
+base_controller_rate: 30  # Hz
 
-use_base_controller: False   # You're handling control in ROS
+# Wheel & encoder specs
+wheel_diameter: 0.065     # meters (e.g., 65 mm)
+wheel_track: 0.20             # Distance between wheels
+encoder_resolution: 3200  # ticks per revolution
+max_speed: 1.0    
+
+# PID control values
+Kp: 20
+Ki: 0
+Kd: 12
+Ko: 50
+
+# Motor configuration
+left_motor_reversed: False
+right_motor_reversed: False
+
+# Debug
+publish_odom_tf: True     # Set to False if you're using static transforms elsewhere
+
+
+
+use_base_controller: True
 base_controller_rate: 10
 
-base_frame: base_link
-
-# === Motor + Encoder Parameters
-wheel_diameter: 0.1          # Adjust based on your wheels (in meters)
-wheel_track: 0.3             # Distance between wheels (in meters)
-encoder_resolution: 1440     # Depends on your encoders and gear ratio
-gear_reduction: 1.0          # 1.0 if encoders are on motor shaft
-motors_reversed: False       # True if they spin the wrong way
-
-# === Sensors (none, skip or leave empty)
-sensors: {}
