@@ -49,38 +49,66 @@ void setMotor(int pwm_val) {
   }
 }
 
-// Leer y procesar comandos seriales
+// Leer y procesar comandos seriales (ASCII text commands)
 void processCommand() {
   if (Serial.available()) {
-    char cmd = Serial.read();
+    String cmdLine = Serial.readStringUntil('\n');  // Leer línea completa
+    cmdLine.trim();  // Quitar espacios en blanco
 
-    switch (cmd) {
-      case MOTOR_SPEEDS: {  // 'm'
-        // Comando 'm' para velocidad PID (2 bytes)
-        while (Serial.available() < 2);
-        int16_t speed = Serial.read() | (Serial.read() << 8);
-        target_speed_ticks = speed;
-        pid_enabled = true;  // activar PID
+    if (cmdLine.length() == 0) return;
+
+    char command = cmdLine.charAt(0);
+
+    switch (command) {
+      case MOTOR_SPEEDS: {  // 'm' comando: velocidad objetivo PID
+        // Formato esperado: m <velocidad>
+        int spaceIndex = cmdLine.indexOf(' ');
+        if (spaceIndex > 0) {
+          String speedStr = cmdLine.substring(spaceIndex + 1);
+          int speed = speedStr.toInt();
+          target_speed_ticks = speed;
+          pid_enabled = true;
+          Serial.print("PID enabled with target speed: ");
+          Serial.println(speed);
+        } else {
+          Serial.println("Error: 'm' command requires speed argument");
+        }
         break;
       }
-      case 'o': {
-        // Comando 'o' para PWM raw (1 byte)
-        while (Serial.available() < 1);
-        int8_t pwm = Serial.read();  // signed 8 bits, -128 a 127
-        pid_enabled = false;  // desactivar PID
-        setMotor(pwm);
+
+      case MOTOR_PWM_RAW: {  // 'o' comando: PWM raw, desactiva PID
+        // Formato esperado: o <pwm>
+        int spaceIndex = cmdLine.indexOf(' ');
+        if (spaceIndex > 0) {
+          String pwmStr = cmdLine.substring(spaceIndex + 1);
+          int pwm = pwmStr.toInt();
+          pid_enabled = false;
+          setMotor(pwm);
+          Serial.print("Raw PWM set to: ");
+          Serial.println(pwm);
+        } else {
+          Serial.println("Error: 'o' command requires PWM argument");
+        }
         break;
       }
-      case READ_ENCODERS: {
-        // Enviar encoder (4 bytes, little endian)
-        long count = encoder_count;
-        Serial.write((uint8_t*)&count, sizeof(count));
+
+      case READ_ENCODERS: {  // 'e' comando: enviar cuenta del encoder
+        Serial.print("Encoder count: ");
+        Serial.println(encoder_count);
         break;
       }
-      case RESET_ENCODERS: {
+
+      case RESET_ENCODERS: {  // 'r' comando: reset encoder y PID
         encoder_count = 0;
         integral = 0;
         prev_error = 0;
+        Serial.println("Encoder and PID reset");
+        break;
+      }
+
+      default: {
+        Serial.print("Unknown command: ");
+        Serial.println(command);
         break;
       }
     }
@@ -122,6 +150,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(ENC_A), encoderISR, RISING);
 
   Serial.begin(57600);
+  Serial.println("Arduino motor control ready");
 }
 
 void loop() {
