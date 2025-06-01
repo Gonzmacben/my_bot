@@ -23,6 +23,8 @@ float prev_error = 0;
 unsigned long last_pid_time = 0;
 const unsigned long PID_INTERVAL = 33; // ms -> ~30 Hz
 
+bool pid_enabled = false;  // Flag para activar/desactivar PID
+
 // ISR encoder (incrementa o decrementa según dirección)
 void encoderISR() {
   int b_val = digitalRead(ENC_B);
@@ -53,17 +55,19 @@ void processCommand() {
     char cmd = Serial.read();
 
     switch (cmd) {
-      case MOTOR_SPEEDS: {
+      case MOTOR_SPEEDS: {  // 'm'
         // Comando 'm' para velocidad PID (2 bytes)
         while (Serial.available() < 2);
         int16_t speed = Serial.read() | (Serial.read() << 8);
         target_speed_ticks = speed;
+        pid_enabled = true;  // activar PID
         break;
       }
       case 'o': {
         // Comando 'o' para PWM raw (1 byte)
         while (Serial.available() < 1);
         int8_t pwm = Serial.read();  // signed 8 bits, -128 a 127
+        pid_enabled = false;  // desactivar PID
         setMotor(pwm);
         break;
       }
@@ -89,25 +93,19 @@ void runPID() {
   if (now - last_pid_time >= PID_INTERVAL) {
     last_pid_time = now;
 
-    // Leer velocidad actual en ticks por ciclo PID (aproximado)
     static long last_count = 0;
     long delta_ticks = encoder_count - last_count;
     last_count = encoder_count;
 
-    // Error entre objetivo y velocidad actual
     float error = (float)target_speed_ticks - (float)delta_ticks;
 
-    // Integral y derivada
     integral += error;
     float derivative = error - prev_error;
     prev_error = error;
 
-    // Salida PID
     float output = Kp * error + Ki * integral + Kd * derivative;
-    // Escalar con Ko si quieres (Ko es ganancia de salida)
     output *= Ko;
 
-    // Convertir a PWM y limitar
     int pwm = (int)output;
     pwm = constrain(pwm, -255, 255);
 
@@ -128,5 +126,8 @@ void setup() {
 
 void loop() {
   processCommand();
-  runPID();
+
+  if (pid_enabled) {
+    runPID();
+  }
 }
