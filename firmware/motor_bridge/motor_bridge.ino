@@ -8,10 +8,10 @@
 
 // Global Variables
 volatile long encoder_count = 0;
-int16_t target_speed_ticks = 0;  //ticks per PID loop (speed)
+int16_t target_speed_ticks = 0;  // ticks per PID loop (speed)
 int pwm_output = 0;
 
-// Parámetros PID
+// PID Parameters (tune as needed)
 float Kp = 20.0;
 float Ki = 0.0;
 float Kd = 12.0;
@@ -23,20 +23,27 @@ float prev_error = 0;
 unsigned long last_pid_time = 0;
 const unsigned long PID_INTERVAL = 33; // ms -> ~30 Hz
 
-bool pid_enabled = false;  // Flag activate/deactivate PID
+bool pid_enabled = false;  // Flag to activate/deactivate PID
 
-// Buffer serial commands
+// Serial command buffer
 #define CMD_BUFFER_SIZE 64
 char cmdBuffer[CMD_BUFFER_SIZE];
 uint8_t cmdIndex = 0;
 
-// ISR encoder (increases or decreases depending on direction)
+// Invert encoder direction if counts are reversed after wiring swap
+const bool invert_encoder_direction = false;
+
+// Encoder ISR (increments or decrements depending on direction)
 void encoderISR() {
   int b_val = digitalRead(ENC_B);
-  encoder_count += (b_val == HIGH) ? 1 : -1;
+  if (invert_encoder_direction) {
+    encoder_count += (b_val == HIGH) ? -1 : 1;
+  } else {
+    encoder_count += (b_val == HIGH) ? 1 : -1;
+  }
 }
 
-// Func that establishes PWM and motor direction
+// Set motor PWM and direction
 void setMotor(int pwm_val) {
   int pwm = abs(pwm_val);
   pwm = constrain(pwm, 0, 255);
@@ -54,7 +61,7 @@ void setMotor(int pwm_val) {
   }
 }
 
-// Process full cmd line
+// Process a full command line
 void handleCommand(String cmdLine) {
   cmdLine.trim();
   if (cmdLine.length() == 0) return;  // Ignore empty lines
@@ -125,31 +132,25 @@ void handleCommand(String cmdLine) {
   }
 }
 
-// Read and process serial commands (buffer to newline)
+// Read and process serial commands (buffer until newline)
 void processCommand() {
   while (Serial.available()) {
     char c = Serial.read();
 
-    // Echo to see whats written
+    // Echo typed characters
     Serial.write(c);
 
-    if (c == '\r') {
-      // Ignore carriage return
-      continue;
-    }
+    if (c == '\r') continue;  // Ignore carriage return
 
     if (c == '\n') {
-      // Line end, process full command
-      cmdBuffer[cmdIndex] = '\0';  // Finish string
+      cmdBuffer[cmdIndex] = '\0';  // Null-terminate string
       String cmdLine = String(cmdBuffer);
       handleCommand(cmdLine);
       cmdIndex = 0;  // Reset buffer
     } else {
-      // Save letter in buffer if there is space
       if (cmdIndex < CMD_BUFFER_SIZE - 1) {
         cmdBuffer[cmdIndex++] = c;
       } else {
-        // Buffer overflow
         cmdIndex = 0;
         Serial.println("Error: command too long");
       }
@@ -157,7 +158,7 @@ void processCommand() {
   }
 }
 
-// Run PID to adjust PWM according to speed objetive
+// PID loop to adjust PWM based on target speed
 void runPID() {
   unsigned long now = millis();
   if (now - last_pid_time >= PID_INTERVAL) {
