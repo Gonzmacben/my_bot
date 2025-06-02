@@ -1,3 +1,60 @@
+#include "commands.h"
+
+// Motor-Encoder PINs
+#define MOTOR_IN1 9
+#define MOTOR_IN2 6
+#define ENC_A 2
+#define ENC_B 3
+
+// Global Variables
+volatile long encoder_count = 0;
+int16_t target_speed_ticks = 0;  //ticks per PID loop (speed)
+int pwm_output = 0;
+
+// Parámetros PID
+float Kp = 20.0;
+float Ki = 0.0;
+float Kd = 12.0;
+float Ko = 50.0;
+
+float integral = 0;
+float prev_error = 0;
+
+unsigned long last_pid_time = 0;
+const unsigned long PID_INTERVAL = 33; // ms -> ~30 Hz
+
+bool pid_enabled = false;  // Flag activate/deactivate PID
+
+// Buffer serial commands
+#define CMD_BUFFER_SIZE 64
+char cmdBuffer[CMD_BUFFER_SIZE];
+uint8_t cmdIndex = 0;
+
+// ISR encoder (increases or decreases depending on direction)
+void encoderISR() {
+  int b_val = digitalRead(ENC_B);
+  encoder_count += (b_val == HIGH) ? 1 : -1;
+}
+
+// Func that establishes PWM and motor direction
+void setMotor(int pwm_val) {
+  int pwm = abs(pwm_val);
+  pwm = constrain(pwm, 0, 255);
+  if (pwm < 80 && pwm_val != 0) pwm = 80;
+
+  if (pwm_val > 0) {
+    analogWrite(MOTOR_IN1, pwm);
+    digitalWrite(MOTOR_IN2, LOW);
+  } else if (pwm_val < 0) {
+    digitalWrite(MOTOR_IN1, LOW);
+    analogWrite(MOTOR_IN2, pwm);
+  } else {
+    digitalWrite(MOTOR_IN1, LOW);
+    digitalWrite(MOTOR_IN2, LOW);
+  }
+}
+
+// Process full cmd line
 void handleCommand(String cmdLine) {
   cmdLine.trim();
   if (cmdLine.length() == 0) return;  // Ignore empty lines
@@ -38,7 +95,7 @@ void handleCommand(String cmdLine) {
         String arg = cmdLine.substring(spaceIndex + 1);
         arg.trim();
         if (arg.length() > 0) {
-          int pwm = arg.toInt();  // toInt() handles negative numbers fine
+          int pwm = arg.toInt();
           pid_enabled = false;
           setMotor(pwm);
           Serial.print("Raw PWM set to: ");
@@ -65,5 +122,83 @@ void handleCommand(String cmdLine) {
       Serial.println("Encoder and PID reset");
       break;
     }
+  }
+}
+
+// Read and process serial commands (buffer to newline)
+void processCommand() {
+  while (Serial.available()) {
+    char c = Serial.read();
+
+    // Echo to see whats written
+    Serial.write(c);
+
+    if (c == '\r') {
+      // Ignore carriage return
+      continue;
+    }
+
+    if (c == '\n') {
+      // Line end, process full command
+      cmdBuffer[cmdIndex] = '\0';  // Finish string
+      String cmdLine = String(cmdBuffer);
+      handleCommand(cmdLine);
+      cmdIndex = 0;  // Reset buffer
+    } else {
+      // Save letter in buffer if there is space
+      if (cmdIndex < CMD_BUFFER_SIZE - 1) {
+        cmdBuffer[cmdIndex++] = c;
+      } else {
+        // Buffer overflow
+        cmdIndex = 0;
+        Serial.println("Error: command too long");
+      }
+    }
+  }
+}
+
+// Run PID to adjust PWM according to speed objetive
+void runPID() {
+  unsigned long now = millis();
+  if (now - last_pid_time >= PID_INTERVAL) {
+    last_pid_time = now;
+
+    static long last_count = 0;
+    long delta_ticks = encoder_count - last_count;
+    last_count = encoder_count;
+
+    float error = (float)target_speed_ticks - (float)delta_ticks;
+
+    integral += error;
+    float derivative = error - prev_error;
+    prev_error = error;
+
+    float output = Kp * error + Ki * integral + Kd * derivative;
+    output *= Ko;
+
+    int pwm = (int)output;
+    pwm = constrain(pwm, -255, 255);
+
+    setMotor(pwm);
+  }
+}
+
+void setup() {
+  pinMode(MOTOR_IN1, OUTPUT);
+  pinMode(MOTOR_IN2, OUTPUT);
+  pinMode(ENC_A, INPUT_PULLUP);
+  pinMode(ENC_B, INPUT_PULLUP);
+
+  attachInterrupt(digitalPinToInterrupt(ENC_A), encoderISR, RISING);
+
+  Serial.begin(57600);
+  Serial.println("Arduino motor control ready");
+}
+
+void loop() {
+  processCommand();
+
+  if (pid_enabled) {
+    runPID();
   }
 }
