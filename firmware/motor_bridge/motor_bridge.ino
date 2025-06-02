@@ -25,6 +25,11 @@ const unsigned long PID_INTERVAL = 33; // ms -> ~30 Hz
 
 bool pid_enabled = false;  // Flag para activar/desactivar PID
 
+// Buffer para comandos seriales
+#define CMD_BUFFER_SIZE 64
+char cmdBuffer[CMD_BUFFER_SIZE];
+uint8_t cmdIndex = 0;
+
 // ISR encoder (incrementa o decrementa según dirección)
 void encoderISR() {
   int b_val = digitalRead(ENC_B);
@@ -49,67 +54,91 @@ void setMotor(int pwm_val) {
   }
 }
 
-// Leer y procesar comandos seriales (ASCII text commands)
+// Procesar línea completa de comando
+void handleCommand(String cmdLine) {
+  cmdLine.trim();
+  if (cmdLine.length() == 0) return;
+
+  char command = cmdLine.charAt(0);
+
+  switch (command) {
+    case MOTOR_SPEEDS: {  // 'm' comando: velocidad objetivo PID
+      int spaceIndex = cmdLine.indexOf(' ');
+      if (spaceIndex > 0) {
+        int speed = cmdLine.substring(spaceIndex + 1).toInt();
+        target_speed_ticks = speed;
+        pid_enabled = true;
+        Serial.print("PID enabled with target speed: ");
+        Serial.println(speed);
+      } else {
+        Serial.println("Error: 'm' command requires speed argument");
+      }
+      break;
+    }
+
+    case MOTOR_PWM_RAW: {  // 'o' comando: PWM raw, desactiva PID
+      int spaceIndex = cmdLine.indexOf(' ');
+      if (spaceIndex > 0) {
+        int pwm = cmdLine.substring(spaceIndex + 1).toInt();
+        pid_enabled = false;
+        setMotor(pwm);
+        Serial.print("Raw PWM set to: ");
+        Serial.println(pwm);
+      } else {
+        Serial.println("Error: 'o' command requires PWM argument");
+      }
+      break;
+    }
+
+    case READ_ENCODERS: {  // 'e' comando: enviar cuenta del encoder
+      Serial.print("Encoder count: ");
+      Serial.println(encoder_count);
+      break;
+    }
+
+    case RESET_ENCODERS: {  // 'r' comando: reset encoder y PID
+      encoder_count = 0;
+      integral = 0;
+      prev_error = 0;
+      Serial.println("Encoder and PID reset");
+      break;
+    }
+
+    default: {
+      Serial.print("Unknown command: ");
+      Serial.println(command);
+      break;
+    }
+  }
+}
+
+// Leer y procesar comandos seriales (buffer hasta newline)
 void processCommand() {
-  if (Serial.available()) {
-    String cmdLine = Serial.readStringUntil('\n');  // Leer línea completa
-    cmdLine.trim();  // Quitar espacios en blanco
+  while (Serial.available()) {
+    char c = Serial.read();
 
-    if (cmdLine.length() == 0) return;
+    // Eco para ver lo que se escribe
+    Serial.write(c);
 
-    char command = cmdLine.charAt(0);
+    if (c == '\r') {
+      // Ignorar carriage return
+      continue;
+    }
 
-    switch (command) {
-      case MOTOR_SPEEDS: {  // 'm' comando: velocidad objetivo PID
-        // Formato esperado: m <velocidad>
-        int spaceIndex = cmdLine.indexOf(' ');
-        if (spaceIndex > 0) {
-          String speedStr = cmdLine.substring(spaceIndex + 1);
-          int speed = speedStr.toInt();
-          target_speed_ticks = speed;
-          pid_enabled = true;
-          Serial.print("PID enabled with target speed: ");
-          Serial.println(speed);
-        } else {
-          Serial.println("Error: 'm' command requires speed argument");
-        }
-        break;
-      }
-
-      case MOTOR_PWM_RAW: {  // 'o' comando: PWM raw, desactiva PID
-        // Formato esperado: o <pwm>
-        int spaceIndex = cmdLine.indexOf(' ');
-        if (spaceIndex > 0) {
-          String pwmStr = cmdLine.substring(spaceIndex + 1);
-          int pwm = pwmStr.toInt();
-          pid_enabled = false;
-          setMotor(pwm);
-          Serial.print("Raw PWM set to: ");
-          Serial.println(pwm);
-        } else {
-          Serial.println("Error: 'o' command requires PWM argument");
-        }
-        break;
-      }
-
-      case READ_ENCODERS: {  // 'e' comando: enviar cuenta del encoder
-        Serial.print("Encoder count: ");
-        Serial.println(encoder_count);
-        break;
-      }
-
-      case RESET_ENCODERS: {  // 'r' comando: reset encoder y PID
-        encoder_count = 0;
-        integral = 0;
-        prev_error = 0;
-        Serial.println("Encoder and PID reset");
-        break;
-      }
-
-      default: {
-        Serial.print("Unknown command: ");
-        Serial.println(command);
-        break;
+    if (c == '\n') {
+      // Fin de línea, procesar comando completo
+      cmdBuffer[cmdIndex] = '\0';  // Terminar string
+      String cmdLine = String(cmdBuffer);
+      handleCommand(cmdLine);
+      cmdIndex = 0;  // Reiniciar buffer
+    } else {
+      // Guardar caracter en buffer si hay espacio
+      if (cmdIndex < CMD_BUFFER_SIZE - 1) {
+        cmdBuffer[cmdIndex++] = c;
+      } else {
+        // Buffer overflow
+        cmdIndex = 0;
+        Serial.println("Error: command too long");
       }
     }
   }
