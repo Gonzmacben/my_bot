@@ -13,7 +13,7 @@ int pwm_output = 0;
 
 // PID Parameters (tune as needed)
 float Kp = 3.0;
-float Ki = 2.5;
+float Ki = 0;
 float Kd = 0.625;
 float Ko = 1.0;
 
