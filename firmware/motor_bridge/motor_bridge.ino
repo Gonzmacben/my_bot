@@ -43,11 +43,11 @@ void encoderISR() {
   }
 }
 
-// Set motor PWM and direction with PWM threshold of 15
+// Set motor PWM and direction with PWM threshold of 40
 void setMotor(int pwm_val) {
   int pwm = abs(pwm_val);
   pwm = constrain(pwm, 0, 255);
-  if (pwm < 15 && pwm_val != 0) pwm = 15;  // Lower threshold to 15
+  if (pwm < 40 && pwm_val != 0) pwm = 40;  // Threshold set to 40
 
   if (pwm_val > 0) {
     analogWrite(MOTOR_IN1, pwm);
