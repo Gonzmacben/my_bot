@@ -12,9 +12,9 @@ int16_t target_speed_ticks = 0;  // ticks per PID loop (speed)
 int pwm_output = 0;
 
 // PID Parameters
-float Kp = 18;
-float Ki = 0.03;
-float Kd = 1.0;
+float Kp = 16;
+float Ki = 0.04;
+float Kd = 1.2;
 float Ko = 1.0;
 
 float integral = 0;
