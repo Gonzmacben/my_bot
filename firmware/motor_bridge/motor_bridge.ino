@@ -11,7 +11,7 @@ volatile long encoder_count = 0;
 int16_t target_speed_ticks = 0;  // ticks per PID loop (speed)
 int pwm_output = 0;
 
-// PID Parameters with your specified values
+// PID Parameters
 float Kp = 3.0;
 float Ki = 0.0;
 float Kd = 0.625;
@@ -158,7 +158,7 @@ void processCommand() {
   }
 }
 
-// PID loop to adjust PWM based on target speed, with debug output
+// PID loop to adjust PWM based on target speed, with debug output including PWM
 void runPID() {
   unsigned long now = millis();
   if (now - last_pid_time >= PID_INTERVAL) {
@@ -182,13 +182,15 @@ void runPID() {
 
     setMotor(pwm);
 
-    // Debug print: target speed, actual speed, error
+    // Debug print: target speed, actual speed, error, and pwm
     Serial.print("Target: ");
     Serial.print(target_speed_ticks);
     Serial.print("  Actual: ");
     Serial.print(delta_ticks);
     Serial.print("  Error: ");
-    Serial.println(error);
+    Serial.print(error);
+    Serial.print("  PWM: ");
+    Serial.println(pwm);
   }
 }
 
