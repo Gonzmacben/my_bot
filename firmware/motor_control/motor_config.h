@@ -42,7 +42,7 @@ const int LINEAR_ACTUATOR_IN2[2] = {26, 28}; // Reverse control pins
 
 // PID constants per motor (example values)
 const float Kp[NUM_MOTORS] = {2.5, 2.5, 2.5, 2.5};
-const float Ki[NUM_MOTORS] = {0.02, 0.02, 0.02, 0.02}; // 0.8, 0.8, 0.8, 0.8
+const float Ki[NUM_MOTORS] = {0.8, 0.8, 0.8, 0.8}; // 0.8, 0.8, 0.8, 0.8
 const float Kd[NUM_MOTORS] = {0.6, 0.6, 0.6, 0.6};
 const float Ko[NUM_MOTORS] = {1.0, 1.0, 1.0, 1.0};
 
@@ -52,6 +52,6 @@ const bool invert_encoder[NUM_MOTORS] = {false, false, false, false};
 // Encoder and timing constants
 const float TICKS_PER_REV = 1414.7;
 const float MS_PER_MIN = 60000.0;
-const unsigned long PID_INTERVAL = 33;  // ~30Hz PID loop
+const unsigned long PID_INTERVAL = 20;  // ~30Hz PID loop
 
 #endif // MOTOR_CONFIG_H
