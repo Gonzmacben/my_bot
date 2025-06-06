@@ -3,7 +3,7 @@
 
 // Encoder counts and PID variables
 volatile long encoder_count[NUM_MOTORS] = {0};
-float target_speed_rpm[NUM_MOTORS] = {0};
+float target_speed_rpm[NUM_MOTORS] = {50};
 float integral[NUM_MOTORS] = {0};
 float prev_error[NUM_MOTORS] = {0};
 bool pid_enabled[NUM_MOTORS] = {false};
@@ -60,7 +60,7 @@ void loop() {
   if (Serial.available()) {
     String input = Serial.readStringUntil('\n');
     input.trim();
-
+    /*
     if (input.equalsIgnoreCase("RESET")) {
       for (int i = 0; i < NUM_MOTORS; i++) encoder_count[i] = 0;
       Serial.println("RESET_OK");
@@ -96,6 +96,7 @@ void loop() {
         prev_error[i] = 0;
       }
     }
+      */
   }
 
   unsigned long now = millis();
