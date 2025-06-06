@@ -13,9 +13,9 @@ const int MOTOR_IN2[NUM_MOTORS] = {8, 9, 10, 11}; // ---
 const int ENC_A[NUM_MOTORS] = {3, 2, 18, 19}; // ---
 const int ENC_B[NUM_MOTORS] = {14,15,16,17}; // ---
 
-// ESTO ESTA MAL PONGANLO BIEN
-cons int imu sda pin 20
-cons int imu scl pin 21
+// CORREGIDO:
+const int IMU_SDA_PIN = 20;
+const int IMU_SCL_PIN = 21;
 
 // PID parameters per motor (adjust as needed)
 const float Kp[NUM_MOTORS] = {2.5, 2.5, 2.5, 2.5}; // ---
@@ -29,7 +29,7 @@ const float MS_PER_MIN = 60000.0;
 const unsigned long PID_INTERVAL_MS = 33; // PID loop interval (~30Hz)
 
 // Pins for 2 linear DC motors controlled by L298N
-const int LINEAR_ACTUATOR_IN1[2] = {22, 24};  // F, B
+const int LINEAR_ACTUATOR_IN1[2] = {0, 1};  // F, B
 const int LINEAR_ACTUATOR_IN2[2] = {18, 19}; // ---
 
 #endif // MOTOR_CONFIG_H
