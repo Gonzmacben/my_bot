@@ -9,30 +9,25 @@ class MotorSequenceNode(Node):
     def __init__(self):
         super().__init__('motor_sequence_node')
 
-        # === SERIAL CONFIGURATION ===
-        self.serial_port = '/dev/ttyACM0'  # Adjust as needed
+        self.serial_port = '/dev/ttyACM0'
         self.baud_rate = 57600
         try:
             self.ser = serial.Serial(self.serial_port, self.baud_rate, timeout=0.1)
-            time.sleep(2)  # Wait for Arduino reset
+            time.sleep(2)
             self.get_logger().info(f"Opened serial port {self.serial_port} at {self.baud_rate} baud")
         except Exception as e:
             self.get_logger().error(f"Failed to open serial port: {e}")
             raise e
 
-        # === CONTROL PARAMETERS ===
         self.num_motors = 4
         self.target_rpm = 45.0
-        self.pause_duration = 1.0  # seconds between phases
-        self.target_counts = 3000  # encoder ticks per phase
+        self.pause_duration = 1.0
+        self.target_counts = 3000
 
-        # === STATE VARIABLES ===
         self.current_encoder = [0.0] * self.num_motors
         self.reset_confirmed = False
         self.current_phase = ""
         self.motors_active = False
-
-        # Serial read buffer for incomplete lines
         self.serial_buffer = ""
 
     def send_command(self, cmd):
@@ -41,7 +36,7 @@ class MotorSequenceNode(Node):
             self.ser.write(full_cmd.encode('utf-8'))
             self.ser.flush()
             self.get_logger().info(f"Sent command: {repr(full_cmd)}")
-            time.sleep(0.05)  # Small delay to allow Arduino to process
+            time.sleep(0.05)
         except Exception as e:
             self.get_logger().error(f"Failed to send command '{cmd}': {e}")
 
@@ -57,6 +52,11 @@ class MotorSequenceNode(Node):
         self.send_command(cmd)
         self.motors_active = (rpm != 0)
 
+    def send_actuator_pwm(self, pwm1, pwm2):
+        cmd = f"ACT:{int(pwm1)},{int(pwm2)}"
+        self.get_logger().info(f"Sending actuator PWM command: {cmd}")
+        self.send_command(cmd)
+
     def stop_all_motors(self):
         self.send_command("STOP")
         self.motors_active = False
@@ -65,6 +65,10 @@ class MotorSequenceNode(Node):
     def switch_linear_actuators(self):
         self.send_command("SWITCH")
         self.get_logger().info("Sent SWITCH command to linear actuators")
+
+    def switch_linear_actuators_back(self):
+        self.send_command("SWITCH_BACK")
+        self.get_logger().info("Sent SWITCH_BACK command to linear actuators")
 
     def process_line(self, line):
         line = line.strip()
@@ -104,7 +108,6 @@ class MotorSequenceNode(Node):
     def run_full_sequence(self):
         self.get_logger().info("Starting full motor control sequence...")
 
-        # Reset encoders
         self.reset_encoder()
         timeout = time.time() + 5.0
         while not self.reset_confirmed and time.time() < timeout:
@@ -114,7 +117,6 @@ class MotorSequenceNode(Node):
             self.get_logger().error("Failed to confirm reset, aborting sequence.")
             return
 
-        # Phase 1: Move forward
         self.current_phase = "MOVING FORWARD"
         start_counts = self.current_encoder.copy()
         self.send_rpm_all(self.target_rpm)
@@ -124,7 +126,6 @@ class MotorSequenceNode(Node):
         self.stop_all_motors()
         self.get_logger().info("Phase 1 complete: Moved forward.")
 
-        # Phase 2: Pause
         self.current_phase = "PAUSE 1"
         pause_start = time.time()
         while time.time() - pause_start < self.pause_duration:
@@ -132,17 +133,21 @@ class MotorSequenceNode(Node):
             time.sleep(0.05)
         self.get_logger().info("Phase 2 complete: Pause done.")
 
-        # Phase 3: Switch linear actuators
         self.switch_linear_actuators()
         wait_start = time.time()
-        wait_duration = 8  # seconds
-        self.get_logger().info(f"Waiting {wait_duration}s for linear actuators to complete...")
+        wait_duration = 8
+        self.get_logger().info(f"Waiting {wait_duration}s for linear actuators to complete forward switch...")
         while time.time() - wait_start < wait_duration:
             self.read_serial_lines()
             time.sleep(0.05)
-        self.get_logger().info("Phase 3 complete: Linear actuators switched.")
 
-        # Phase 4: Move backward
+        self.switch_linear_actuators_back()
+        wait_start = time.time()
+        self.get_logger().info(f"Waiting {wait_duration}s for linear actuators to complete reverse switch...")
+        while time.time() - wait_start < wait_duration:
+            self.read_serial_lines()
+            time.sleep(0.05)
+
         self.current_phase = "MOVING BACKWARD"
         start_counts = self.current_encoder.copy()
         self.send_rpm_all(-self.target_rpm)
@@ -152,7 +157,6 @@ class MotorSequenceNode(Node):
         self.stop_all_motors()
         self.get_logger().info("Phase 4 complete: Moved backward.")
 
-        # Phase 5: Final pause
         self.current_phase = "PAUSE 2"
         pause_start = time.time()
         while time.time() - pause_start < self.pause_duration:

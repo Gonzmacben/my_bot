@@ -21,6 +21,7 @@ void encoderISR1() { encoderISR(1); }
 void encoderISR2() { encoderISR(2); }
 void encoderISR3() { encoderISR(3); }
 
+// Motor control for 4 motors
 void setMotor(int i, int pwm_val) {
   int pwm = abs(pwm_val);
   pwm = constrain(pwm, 0, 255);
@@ -38,6 +39,35 @@ void setMotor(int i, int pwm_val) {
   }
 }
 
+// Linear actuator control via L298N driver (2 actuators)
+void setLinearActuator(int actuator_num, int pwm_val) {
+  if (actuator_num < 0 || actuator_num > 1) return;
+
+  int in1_pin = LINEAR_ACTUATOR_IN1[actuator_num];
+  int in2_pin = LINEAR_ACTUATOR_IN2[actuator_num];
+
+  int pwm = abs(pwm_val);
+  pwm = constrain(pwm, 0, 255);
+  if (pwm < 40 && pwm_val != 0) pwm = 40;
+
+  if (pwm_val > 0) {
+    analogWrite(in1_pin, pwm);
+    digitalWrite(in2_pin, LOW);
+  } else if (pwm_val < 0) {
+    digitalWrite(in1_pin, LOW);
+    analogWrite(in2_pin, pwm);
+  } else {
+    digitalWrite(in1_pin, LOW);
+    digitalWrite(in2_pin, LOW);
+  }
+}
+
+void stopLinearActuators() {
+  for (int i = 0; i < 2; i++) {
+    setLinearActuator(i, 0);
+  }
+}
+
 void setup() {
   Serial.begin(57600);
 
@@ -48,12 +78,17 @@ void setup() {
     pinMode(ENC_B[i], INPUT_PULLUP);
   }
 
+  for (int i = 0; i < 2; i++) {
+    pinMode(LINEAR_ACTUATOR_IN1[i], OUTPUT);
+    pinMode(LINEAR_ACTUATOR_IN2[i], OUTPUT);
+  }
+
   attachInterrupt(digitalPinToInterrupt(ENC_A[0]), encoderISR0, RISING);
   attachInterrupt(digitalPinToInterrupt(ENC_A[1]), encoderISR1, RISING);
   attachInterrupt(digitalPinToInterrupt(ENC_A[2]), encoderISR2, RISING);
   attachInterrupt(digitalPinToInterrupt(ENC_A[3]), encoderISR3, RISING);
 
-  Serial.println("4-motor PID control ready");
+  Serial.println("4-motor PID control with linear actuators ready");
 }
 
 void loop() {
@@ -61,7 +96,6 @@ void loop() {
     String input = Serial.readStringUntil('\n');
     input.trim();
 
-    
     if (input.equalsIgnoreCase("RESET")) {
       for (int i = 0; i < NUM_MOTORS; i++) encoder_count[i] = 0;
       Serial.println("RESET_OK");
@@ -89,6 +123,17 @@ void loop() {
         data = data.substring(sep + 1);
       }
 
+    } else if (input.startsWith("ACT:")) {
+      String data = input.substring(4);
+      for (int i = 0; i < 2; i++) {
+        int sep = data.indexOf(',');
+        String val = (sep == -1) ? data : data.substring(0, sep);
+        int pwm_val = val.toInt();
+        setLinearActuator(i, pwm_val);
+        if (sep == -1) break;
+        data = data.substring(sep + 1);
+      }
+
     } else if (input.equalsIgnoreCase("STOP")) {
       for (int i = 0; i < NUM_MOTORS; i++) {
         pid_enabled[i] = false;
@@ -96,10 +141,20 @@ void loop() {
         integral[i] = 0;
         prev_error[i] = 0;
       }
-    }
-      
-  }
+      stopLinearActuators();
 
+    } else if (input.equalsIgnoreCase("SWITCH")) {
+      // Example: extend with your actuator switching logic here
+      setLinearActuator(0, 255);
+      setLinearActuator(1, 255);
+      // Add timing/state management as needed
+
+    } else if (input.equalsIgnoreCase("SWITCH_BACK")) {
+      setLinearActuator(0, -255);
+      setLinearActuator(1, -255);
+      // Add timing/state management as needed
+    }
+  }
 
   unsigned long now = millis();
   if (now - last_pid_time >= PID_INTERVAL) {
@@ -126,7 +181,7 @@ void loop() {
 
       Serial.print("Motor ");
       Serial.print(i);
-      Serial.print("PWM: ");
+      Serial.print(" PWM: ");
       Serial.println(pwm);
 
       setMotor(i, pwm);
