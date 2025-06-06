@@ -129,6 +129,7 @@ class MotorSequenceNode(Node):
             time.sleep(0.05)
         self.stop_all_motors()
 
+        # Opcional: resetear antes de siguiente fase
         self.reset_encoder()
         if not self.wait_for_reset_ok():
             self.get_logger().error("No se recibió RESET_OK después de mover hacia adelante.")
@@ -151,10 +152,12 @@ class MotorSequenceNode(Node):
             self.read_serial_lines()
             time.sleep(0.05)
 
+                # Resetear y esperar confirmación antes de continuar
         self.reset_encoder()
         if not self.wait_for_reset_ok():
             self.get_logger().error("No se recibió RESET_OK después de mover hacia atrás.")
             return
+
 
         self.switch_linear_actuators_back()
         wait_start = time.time()
