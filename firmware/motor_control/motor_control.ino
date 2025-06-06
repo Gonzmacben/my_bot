@@ -123,7 +123,7 @@ void loop() {
 
       Serial.print("Motor ");
       Serial.print(i);
-      Serial.print(" PWM: ");
+      Serial.print("PWM: ");
       Serial.println(pwm);
 
       setMotor(i, pwm);
