@@ -10,6 +10,9 @@ bool pid_enabled[NUM_MOTORS] = {false};
 
 unsigned long last_pid_time = 0;
 
+// Direction inversion flags: invert FR (index 1) and BR (index 3) motors
+const bool invert_motor_dir[NUM_MOTORS] = {false, true, false, true};
+
 // Encoder ISR handler
 void encoderISR(int i) {
   int b_val = digitalRead(ENC_B[i]);
@@ -21,8 +24,10 @@ void encoderISR1() { encoderISR(1); }
 void encoderISR2() { encoderISR(2); }
 void encoderISR3() { encoderISR(3); }
 
-// Motor control for 4 motors
+// Motor control for 4 motors with direction inversion
 void setMotor(int i, int pwm_val) {
+  if (invert_motor_dir[i]) pwm_val = -pwm_val;
+
   int pwm = abs(pwm_val);
   pwm = constrain(pwm, 0, 255);
   if (pwm < 40 && pwm_val != 0) pwm = 40;
@@ -144,15 +149,12 @@ void loop() {
       stopLinearActuators();
 
     } else if (input.equalsIgnoreCase("SWITCH")) {
-      // Example: extend with your actuator switching logic here
       setLinearActuator(0, 255);
       setLinearActuator(1, 255);
-      // Add timing/state management as needed
 
     } else if (input.equalsIgnoreCase("SWITCH_BACK")) {
       setLinearActuator(0, -255);
       setLinearActuator(1, -255);
-      // Add timing/state management as needed
     }
   }
 
