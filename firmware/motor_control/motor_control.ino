@@ -10,7 +10,7 @@ bool pid_enabled[NUM_MOTORS] = {false};
 
 unsigned long last_pid_time = 0;
 
-// Direction inversion flags: invert FR (index 1) and BR (index 3) motors
+// Per-motor direction inversion flags: invert FR (index 1) and BR (index 3)
 const bool invert_motor_dir[NUM_MOTORS] = {false, true, false, true};
 
 // Encoder ISR handler
