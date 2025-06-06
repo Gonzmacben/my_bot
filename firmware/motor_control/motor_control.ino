@@ -1,17 +1,30 @@
 #include <Arduino.h>
 #include "motor_config.h"
 
-// Encoder counts for 4 motors
+// Encoder counts and PID variables
 volatile long encoder_count[NUM_MOTORS] = {0};
+float target_speed_rpm[NUM_MOTORS] = {0};
+float integral[NUM_MOTORS] = {0};
+float prev_error[NUM_MOTORS] = {0};
+bool pid_enabled[NUM_MOTORS] = {false};
 
-// Target encoder counts for movement phases
-const long target_counts = 10000;  // Adjust as needed
-const unsigned long pause_duration_ms = 3000;  // 3 seconds pause
+unsigned long last_pid_time = 0;
 
-// Motor control functions
+// Encoder ISR handler
+void encoderISR(int i) {
+  int b_val = digitalRead(ENC_B[i]);
+  encoder_count[i] += (invert_encoder[i] ? (b_val == HIGH ? -1 : 1) : (b_val == HIGH ? 1 : -1));
+}
+
+void encoderISR0() { encoderISR(0); }
+void encoderISR1() { encoderISR(1); }
+void encoderISR2() { encoderISR(2); }
+void encoderISR3() { encoderISR(3); }
+
 void setMotor(int i, int pwm_val) {
   int pwm = abs(pwm_val);
   pwm = constrain(pwm, 0, 255);
+  if (pwm < 40 && pwm_val != 0) pwm = 40;
 
   if (pwm_val > 0) {
     analogWrite(MOTOR_IN1[i], pwm);
@@ -25,66 +38,9 @@ void setMotor(int i, int pwm_val) {
   }
 }
 
-void stopAllMotors() {
-  for (int i = 0; i < NUM_MOTORS; i++) {
-    setMotor(i, 0);
-  }
-}
-
-// Encoder ISR handlers (example for 4 motors)
-void encoderISR0() { encoder_count[0]++; }
-void encoderISR1() { encoder_count[1]++; }
-void encoderISR2() { encoder_count[2]++; }
-void encoderISR3() { encoder_count[3]++; }
-
-// Linear actuator control (example)
-void extendLinearActuators();
-void retractLinearActuators();
-void stopLinearActuators();
-void switchLinearActuators() {
-  extendLinearActuators();
-  delay(10000);
-  stopLinearActuators();
-  delay(500);
-  retractLinearActuators();
-  delay(10000);
-  stopLinearActuators();
-}
-
-void extendLinearActuators() {
-  // Implement your linear actuator extension logic here
-}
-
-void retractLinearActuators() {
-  // Implement your linear actuator retraction logic here
-}
-
-void stopLinearActuators() {
-  // Implement your linear actuator stop logic here
-}
-
-// Wait until all motors have moved target_counts since start_counts
-bool reachedTargetCounts(long start_counts[]) {
-  for (int i = 0; i < NUM_MOTORS; i++) {
-    if (abs(encoder_count[i] - start_counts[i]) < target_counts) {
-      return false;
-    }
-  }
-  return true;
-}
-
-void resetEncoders() {
-  noInterrupts();
-  for (int i = 0; i < NUM_MOTORS; i++) {
-    encoder_count[i] = 0;
-  }
-  interrupts();
-}
-
 void setup() {
   Serial.begin(57600);
 
-  // Setup motor pins
   for (int i = 0; i < NUM_MOTORS; i++) {
     pinMode(MOTOR_IN1[i], OUTPUT);
     pinMode(MOTOR_IN2[i], OUTPUT);
@@ -92,66 +48,92 @@ void setup() {
     pinMode(ENC_B[i], INPUT_PULLUP);
   }
 
-  // Attach encoder interrupts
   attachInterrupt(digitalPinToInterrupt(ENC_A[0]), encoderISR0, RISING);
   attachInterrupt(digitalPinToInterrupt(ENC_A[1]), encoderISR1, RISING);
   attachInterrupt(digitalPinToInterrupt(ENC_A[2]), encoderISR2, RISING);
   attachInterrupt(digitalPinToInterrupt(ENC_A[3]), encoderISR3, RISING);
 
-  Serial.println("Motor control ready");
+  Serial.println("4-motor PID control ready");
 }
 
 void loop() {
-  // Phase 1: Move forward
-  Serial.println("Phase 1: Moving forward");
-  long start_counts[NUM_MOTORS];
-  noInterrupts();
-  for (int i = 0; i < NUM_MOTORS; i++) start_counts[i] = encoder_count[i];
-  interrupts();
+  if (Serial.available()) {
+    String input = Serial.readStringUntil('\n');
+    input.trim();
 
-  // Set all motors forward at fixed PWM (e.g., 150)
-  for (int i = 0; i < NUM_MOTORS; i++) setMotor(i, 150);
+    if (input.equalsIgnoreCase("RESET")) {
+      for (int i = 0; i < NUM_MOTORS; i++) encoder_count[i] = 0;
+      Serial.println("RESET_OK");
 
-  while (!reachedTargetCounts(start_counts)) {
-    // Optionally, add small delay or monitor encoders
-    delay(10);
-  }
-  stopAllMotors();
+    } else if (input.startsWith("RPM:")) {
+      String data = input.substring(4);
+      for (int i = 0; i < NUM_MOTORS; i++) {
+        int sep = data.indexOf(',');
+        String val = (sep == -1) ? data : data.substring(0, sep);
+        target_speed_rpm[i] = val.toFloat();
+        pid_enabled[i] = true;
+        if (sep == -1) break;
+        data = data.substring(sep + 1);
+      }
 
-  // Phase 2: Pause
-  Serial.println("Phase 2: Pause");
-  unsigned long pause_start = millis();
-  while (millis() - pause_start < pause_duration_ms) {
-    delay(10);
-  }
+    } else if (input.startsWith("PWM:")) {
+      String data = input.substring(4);
+      for (int i = 0; i < NUM_MOTORS; i++) {
+        int sep = data.indexOf(',');
+        String val = (sep == -1) ? data : data.substring(0, sep);
+        int pwm_val = val.toInt();
+        pid_enabled[i] = false;
+        setMotor(i, pwm_val);
+        if (sep == -1) break;
+        data = data.substring(sep + 1);
+      }
 
-  // Phase 3: Switch linear actuators
-  Serial.println("Phase 3: Switching linear actuators");
-  switchLinearActuators();
-
-  // Phase 4: Move backward
-  Serial.println("Phase 4: Moving backward");
-  noInterrupts();
-  for (int i = 0; i < NUM_MOTORS; i++) start_counts[i] = encoder_count[i];
-  interrupts();
-
-  // Set all motors backward at fixed PWM (e.g., -150)
-  for (int i = 0; i < NUM_MOTORS; i++) setMotor(i, -150);
-
-  while (!reachedTargetCounts(start_counts)) {
-    delay(10);
-  }
-  stopAllMotors();
-
-  // Phase 5: Final pause
-  Serial.println("Phase 5: Final pause");
-  pause_start = millis();
-  while (millis() - pause_start < pause_duration_ms) {
-    delay(10);
+    } else if (input.equalsIgnoreCase("STOP")) {
+      for (int i = 0; i < NUM_MOTORS; i++) {
+        pid_enabled[i] = false;
+        setMotor(i, 0);
+        integral[i] = 0;
+        prev_error[i] = 0;
+      }
+    }
   }
 
-  Serial.println("Sequence complete");
-  while (true) {
-    delay(1000);  // Stop here
+  unsigned long now = millis();
+  if (now - last_pid_time >= PID_INTERVAL) {
+    last_pid_time = now;
+
+    static long last_counts[NUM_MOTORS] = {0};
+    for (int i = 0; i < NUM_MOTORS; i++) {
+      if (!pid_enabled[i]) continue;
+
+      long delta = encoder_count[i] - last_counts[i];
+      last_counts[i] = encoder_count[i];
+
+      float measured_rpm = ((float)delta / TICKS_PER_REV) * (MS_PER_MIN / PID_INTERVAL);
+      float error = target_speed_rpm[i] - measured_rpm;
+
+      integral[i] += error;
+      float derivative = error - prev_error[i];
+      prev_error[i] = error;
+
+      float output = Kp[i] * error + Ki[i] * integral[i] + Kd[i] * derivative;
+      output *= Ko[i];
+
+      int pwm = constrain((int)output, -255, 255);
+
+      Serial.print("Motor ");
+      Serial.print(i);
+      Serial.print(" PWM: ");
+      Serial.println(pwm);
+
+      setMotor(i, pwm);
+    }
+
+    Serial.print("ENC: ");
+    for (int i = 0; i < NUM_MOTORS; i++) {
+      Serial.print(encoder_count[i]);
+      if (i < NUM_MOTORS - 1) Serial.print(", ");
+    }
+    Serial.println();
   }
 }
