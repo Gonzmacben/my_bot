@@ -20,9 +20,9 @@ class MotorSequenceNode(Node):
             raise e
 
         self.num_motors = 4
-        self.target_rpm = 45.0
+        self.target_rpm = 70.0
         self.pause_duration = 1.0
-        self.target_counts = 3000
+        self.target_counts = 6440
 
         self.current_encoder = [0.0] * self.num_motors
         self.reset_confirmed = False

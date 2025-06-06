@@ -50,7 +50,7 @@ const float Ko[NUM_MOTORS] = {1.0, 1.0, 1.0, 1.0};
 const bool invert_encoder[NUM_MOTORS] = {false, false, false, false};
 
 // Encoder and timing constants
-const float TICKS_PER_REV = 1414.7;
+const float TICKS_PER_REV = 6440;
 const float MS_PER_MIN = 60000.0;
 const unsigned long PID_INTERVAL = 33;  // ~30Hz PID loop
 
