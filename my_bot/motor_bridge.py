@@ -83,6 +83,7 @@ class MotorSequenceNode(Node):
             return
 
         self.get_logger().debug(f"Processing line: {repr(line)}")
+        time.sleep(0.05)
 
         if line == "RESET_OK":
             self.reset_confirmed = True
