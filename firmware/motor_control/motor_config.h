@@ -4,29 +4,48 @@
 // Number of PID-controlled motors
 const int NUM_MOTORS = 4;
 
-// Number of Linear Actuators
-const int NUM_ACTUATORS = 2;
+// Motor pins with position labels
+const int MOTOR_IN1[NUM_MOTORS] = {
+  4,  // FL - Front Left motor PWM pin
+  5,  // FR - Front Right motor PWM pin
+  6,  // BL - Back Left motor PWM pin
+  7   // BR - Back Right motor PWM pin
+};
 
-// Motor control pins (PWM and direction)
-const int MOTOR_IN1[NUM_MOTORS] = {4, 5, 6, 7};  // Motor 1 to 4 PWM pins
-const int MOTOR_IN2[NUM_MOTORS] = {8, 9, 10, 11}; // Motor 1 to 4 direction pins
+const int MOTOR_IN2[NUM_MOTORS] = {
+  8,  // FL - Front Left motor direction pin
+  9,  // FR - Front Right motor direction pin
+  10, // BL - Back Left motor direction pin
+  11  // BR - Back Right motor direction pin
+};
 
 // Encoder pins for each motor
-const int ENC_A[NUM_MOTORS] = {3, 2, 18, 19};  // Encoder channel A pins
-const int ENC_B[NUM_MOTORS] = {14, 15, 16, 17}; // Encoder channel B pins
+const int ENC_A[NUM_MOTORS] = {
+  3,  // FL encoder channel A
+  2,  // FR encoder channel A
+  18, // BL encoder channel A
+  19  // BR encoder channel A
+};
 
-// Linear actuator control pins
-const int LINEAR_ACTUATOR_IN1[NUM_ACTUATORS] = {22, 24};  // Linear actuator forward control pins
-const int LINEAR_ACTUATOR_IN2[NUM_ACTUATORS] = {18, 19}; // Linear actuator reverse control pins
+const int ENC_B[NUM_MOTORS] = {
+  14, // FL encoder channel B
+  15, // FR encoder channel B
+  16, // BL encoder channel B
+  17  // BR encoder channel B
+};
 
-// Encoder and timing constants
-const long TICKS_PER_REV = 3018;       // Encoder ticks per revolution
-const unsigned long PID_INTERVAL_MS = 33;  // PID loop interval in milliseconds (~30Hz)
+// Linear actuator pins (adjust as needed)
+const int LINEAR_ACTUATOR_IN1[2] = {0, 1};   // Forward control pins
+const int LINEAR_ACTUATOR_IN2[2] = {18, 19}; // Reverse control pins
 
-// PID constants per motor (optional, if you add PID control later)
+// PID constants per motor (example values)
 const float Kp[NUM_MOTORS] = {2.5, 2.5, 2.5, 2.5};
 const float Ki[NUM_MOTORS] = {0.8, 0.8, 0.8, 0.8};
 const float Kd[NUM_MOTORS] = {0.6, 0.6, 0.6, 0.6};
 const float Ko[NUM_MOTORS] = {1.0, 1.0, 1.0, 1.0};
+
+// Encoder and timing constants
+const float TICKS_PER_REV = 3018.0;
+const unsigned long PID_INTERVAL_MS = 33;  // ~30Hz PID loop
 
 #endif // MOTOR_CONFIG_H
