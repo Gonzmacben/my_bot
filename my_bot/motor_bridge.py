@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import rclpy
 from rclpy.node import Node
 import serial
@@ -9,198 +7,125 @@ class MotorSequenceNode(Node):
     def __init__(self):
         super().__init__('motor_sequence_node')
 
-        self.serial_port = '/dev/ttyACM0'
-        self.baud_rate = 57600
-        try:
-            self.ser = serial.Serial(self.serial_port, self.baud_rate, timeout=0.1)
-            time.sleep(2)
-            self.get_logger().info(f"Opened serial port {self.serial_port} at {self.baud_rate} baud")
-        except Exception as e:
-            self.get_logger().error(f"Failed to open serial port: {e}")
-            raise e
+        # Configura el puerto serial
+        self.serial_port = serial.Serial('/dev/ttyUSB0', 115200, timeout=0.1)
 
-        self.num_motors = 4
-        self.target_rpm = 45.0
-        self.pause_duration = 1.0
-        self.target_counts = 3000
+        # Estado interno
+        self.reset_received = False
+        self.encoders = None
 
-        self.current_encoder = [0.0] * self.num_motors
-        self.reset_confirmed = False
-        self.end_op_confirmed = False
-        self.current_phase = ""
-        self.motors_active = False
+        # Buffer para lectura serial
         self.serial_buffer = ""
 
-    def send_command(self, cmd):
-        try:
-            full_cmd = cmd + '\n'
-            self.ser.write(full_cmd.encode('utf-8'))
-            self.ser.flush()
-            self.get_logger().info(f"Sent command: {repr(full_cmd)}")
-            time.sleep(0.05)
-        except Exception as e:
-            self.get_logger().error(f"Failed to send command '{cmd}': {e}")
+        # Empieza la secuencia
+        self.timer = self.create_timer(0.05, self.loop)
 
-    def reset_encoder(self):
-        self.reset_confirmed = False
-        self.ser.reset_input_buffer()
-        self.send_command("RESET")
+        # Fases
+        self.phase = 0
+        self.phase_start_time = self.get_clock().now()
 
-    def wait_for_reset_ok(self, timeout=5.0):
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            self.read_serial_lines()
-            if self.reset_confirmed:
-                self.get_logger().info("Received RESET_OK confirmation, continuing sequence.")
-                return True
-            time.sleep(0.05)
-        self.get_logger().error("Timeout waiting for RESET_OK confirmation.")
-        return False
+        self.send_command("RESET\n")
 
-    def send_rpm_all(self, rpm):
-        rpm_cmd = ','.join([str(float(rpm))] * self.num_motors)
-        cmd = f"RPM:{rpm_cmd}"
-        self.get_logger().info(f"Preparing to send RPM command: {cmd}")
-        self.send_command(cmd)
-        self.motors_active = (rpm != 0)
+    def send_command(self, command):
+        self.serial_port.write(command.encode())
+        self.get_logger().info(f"Sent command: '{command.strip()}'")
 
-    def stop_all_motors(self):
-        self.send_command("STOP")
-        self.motors_active = False
-        self.get_logger().info("Motors stopped.")
+    def process_serial_line(self, line):
+        if line.startswith("ENC:"):
+            try:
+                values = line[4:].split(",")
+                if len(values) == 4:
+                    self.encoders = [float(v) for v in values]
+                    self.get_logger().info(f"[MOVING FORWARD] ENC: {self.encoders}")
+            except ValueError:
+                self.get_logger().warn(f"Could not parse encoder values: '{line}'")
 
-    def switch_linear_actuators(self):
-        self.send_command("SWITCH")
-        self.get_logger().info("Sent SWITCH command to linear actuators")
-
-    def switch_linear_actuators_back(self):
-        self.send_command("SWITCH_BACK")
-        self.get_logger().info("Sent SWITCH_BACK command to linear actuators")
-
-    def process_line(self, line):
-        line = line.strip()
-        if not line:
-            return
-
-        self.get_logger().debug(f"Processing line: {repr(line)}")
-
-        if line == "RESET_OK":
-            self.reset_confirmed = True
+        elif line == "RESET_OK":
+            self.reset_received = True
             self.get_logger().info("[INFO] RESET confirmation received")
 
-        elif line.startswith("ENC:"):
-            try:
-                values = line[4:].split(',')
-                for i in range(min(self.num_motors, len(values))):
-                    self.current_encoder[i] = float(values[i])
-                if self.motors_active:
-                    self.get_logger().info(f"[{self.current_phase}] ENC: {self.current_encoder}")
-            except Exception as e:
-                self.get_logger().warn(f"Error processing encoder line '{line}': {e}")
-
-        else:
-            self.get_logger().debug(f"Ignored line: {repr(line)}")
+        elif line.strip() != "":
+            self.get_logger().debug(f"Ignored line: {line}")
 
     def read_serial_lines(self):
         try:
-            while self.ser.in_waiting:
-                data = self.ser.read(self.ser.in_waiting).decode('utf-8', errors='ignore')
-                self.serial_buffer += data
-                while '\n' in self.serial_buffer:
-                    line, self.serial_buffer = self.serial_buffer.split('\n', 1)
-                    self.process_line(line)
+            data = self.serial_port.read(self.serial_port.in_waiting or 1).decode(errors='ignore')
+            self.serial_buffer += data
+            lines = self.serial_buffer.split('\n')
+
+            # Procesar todas las líneas completas menos la última
+            for line in lines[:-1]:
+                self.process_serial_line(line.strip())
+
+            # Guardar última línea incompleta en buffer
+            self.serial_buffer = lines[-1]
         except Exception as e:
-            self.get_logger().warn(f"Error reading serial: {e}")
+            self.get_logger().error(f"Serial read error: {e}")
 
-    def run_full_sequence(self):
-        self.get_logger().info("Starting full motor control sequence...")
+    def loop(self):
+        self.read_serial_lines()
 
-        # Enviar RESET y esperar confirmación antes de continuar
-        self.reset_encoder()
-        if not self.wait_for_reset_ok():
-            self.get_logger().error("No se recibió RESET_OK, abortando secuencia.")
-            return
+        now = self.get_clock().now()
 
-        self.current_phase = "MOVING FORWARD"
-        start_counts = self.current_encoder.copy()
-        self.send_rpm_all(self.target_rpm)
-        while any(abs(self.current_encoder[i] - start_counts[i]) < self.target_counts for i in range(self.num_motors)):
-            self.read_serial_lines()
-            time.sleep(0.05)
-        self.stop_all_motors()
+        # Fase 0: Esperando RESET
+        if self.phase == 0:
+            if self.reset_received:
+                self.get_logger().info("Received RESET_OK confirmation, continuing sequence.")
+                self.phase = 1
+                self.phase_start_time = now
+                self.reset_received = False
+                self.send_command("FWD\n")
 
-        # Opcional: resetear antes de siguiente fase
-        self.reset_encoder()
-        if not self.wait_for_reset_ok():
-            self.get_logger().error("No se recibió RESET_OK después de mover hacia adelante.")
-            return
+        # Fase 1: Mover hacia adelante durante 2s
+        elif self.phase == 1:
+            if (now - self.phase_start_time).nanoseconds / 1e9 > 2.0:
+                self.send_command("STOP\n")
+                self.get_logger().info("Motors stopped.")
+                time.sleep(0.1)
+                self.send_command("RESET\n")
+                self.phase = 2
+                self.phase_start_time = now
 
-        self.get_logger().info("Phase 1 complete: Moved forward.")
+        # Fase 2: Esperando segundo RESET_OK
+        elif self.phase == 2:
+            if self.reset_received:
+                self.get_logger().info("Phase 1 complete: Moved forward.")
+                self.phase = 3
+                self.phase_start_time = now
+                self.reset_received = False
 
-        self.current_phase = "PAUSE 1"
-        pause_start = time.time()
-        while time.time() - pause_start < self.pause_duration:
-            self.read_serial_lines()
-            time.sleep(0.05)
-        self.get_logger().info("Phase 2 complete: Pause done.")
+        # Fase 3: Pausa de 1s
+        elif self.phase == 3:
+            if (now - self.phase_start_time).nanoseconds / 1e9 > 1.0:
+                self.get_logger().info("Phase 2 complete: Pause done.")
+                self.send_command("SWITCH\n")
+                self.phase = 4
+                self.phase_start_time = now
 
-        self.switch_linear_actuators()
-        wait_start = time.time()
-        wait_duration = 4
-        self.get_logger().info(f"Waiting {wait_duration}s for linear actuators to complete forward switch...")
-        while time.time() - wait_start < wait_duration:
-            self.read_serial_lines()
-            time.sleep(0.05)
+        # Fase 4: Esperar 4s por actuadores lineales
+        elif self.phase == 4:
+            if (now - self.phase_start_time).nanoseconds / 1e9 > 4.0:
+                self.get_logger().info("Actuadores lineales deben haber completado el cambio.")
+                self.send_command("RESET\n")
+                self.phase = 5
 
-                # Resetear y esperar confirmación antes de continuar
-        self.reset_encoder()
-        if not self.wait_for_reset_ok():
-            self.get_logger().error("No se recibió RESET_OK después de mover hacia atrás.")
-            return
-
-
-        self.switch_linear_actuators_back()
-        wait_start = time.time()
-        self.get_logger().info(f"Waiting {wait_duration}s for linear actuators to complete reverse switch...")
-        while time.time() - wait_start < wait_duration:
-            self.read_serial_lines()
-            time.sleep(0.05)
-
-        self.current_phase = "MOVING BACKWARD"
-        start_counts = self.current_encoder.copy()
-        self.send_rpm_all(-self.target_rpm)
-        while any(abs(self.current_encoder[i] - start_counts[i]) < self.target_counts for i in range(self.num_motors)):
-            self.read_serial_lines()
-            time.sleep(0.05)
-        self.stop_all_motors()
-
-        self.get_logger().info("Phase 4 complete: Moved backward.")
-
-        self.current_phase = "PAUSE 2"
-        pause_start = time.time()
-        while time.time() - pause_start < self.pause_duration:
-            self.read_serial_lines()
-            time.sleep(0.05)
-        self.get_logger().info("Phase 5 complete: Final pause done.")
-
-        self.get_logger().info("Full motor control sequence completed.")
-
-    def main_loop(self):
-        self.get_logger().info("Sequence starting...")
-        self.run_full_sequence()
+        # Fase 5: Esperando tercer RESET_OK
+        elif self.phase == 5:
+            if self.reset_received:
+                self.get_logger().info("Phase 3 complete: Cambio a ruedas mecanum listo.")
+                self.phase = 6
+                self.reset_received = False
+                # Aquí puedes continuar la lógica...
 
 def main(args=None):
     rclpy.init(args=args)
     node = MotorSequenceNode()
-
     try:
-        node.main_loop()
+        rclpy.spin(node)
     except KeyboardInterrupt:
-        node.stop_all_motors()
-        node.get_logger().info("Interrupted by user.")
+        pass
     finally:
-        node.stop_all_motors()
-        node.ser.close()
+        node.serial_port.close()
         node.destroy_node()
         rclpy.shutdown()
 
