@@ -34,9 +34,11 @@ const int ENC_B[NUM_MOTORS] = {
   17  // BR encoder channel B
 };
 
-// Linear actuator pins (adjust as needed)
-const int LINEAR_ACTUATOR_IN1[2] = {0, 1};   // Forward control pins
-const int LINEAR_ACTUATOR_IN2[2] = {18, 19}; // Reverse control pins
+// Linear actuator pins (adjust as needed) 
+const int LINEAR_ACTUATOR_IN1[2] = {22, 24};   // Forward control pins 
+const int LINEAR_ACTUATOR_IN2[2] = {26, 28}; // Reverse control pins
+
+// IMU PINS MUST BE 0,1
 
 // PID constants per motor (example values)
 const float Kp[NUM_MOTORS] = {2.5, 2.5, 2.5, 2.5};
