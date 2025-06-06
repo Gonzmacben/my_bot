@@ -134,8 +134,9 @@ void loop() {
 
     Serial.print("ENC:");
     for (int i = 0; i < NUM_MOTORS; i++) {
-      Serial.println(target_speed_rpm[i]);
+      Serial.print(target_speed_rpm[i]);
       if (i < NUM_MOTORS - 1) Serial.print(",");
     }
+    Serial.println();
   }
 }
