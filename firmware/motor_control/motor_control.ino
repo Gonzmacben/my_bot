@@ -13,6 +13,14 @@ unsigned long last_pid_time = 0;
 // Per-motor direction inversion flags: invert FR (index 1) and BR (index 3)
 const bool invert_motor_dir[NUM_MOTORS] = {false, true, false, true};
 
+// Add this function to reset PID terms
+void resetPID() {
+  for (int i = 0; i < NUM_MOTORS; i++) {
+    integral[i] = 0;
+    prev_error[i] = 0;
+  }
+}
+
 // Encoder ISR handler
 void encoderISR(int i) {
   int b_val = digitalRead(ENC_B[i]);
@@ -97,6 +105,8 @@ void setup() {
 }
 
 void loop() {
+  static float last_target_speed_rpm[NUM_MOTORS] = {0};
+
   if (Serial.available()) {
     String input = Serial.readStringUntil('\n');
     input.trim();
@@ -110,10 +120,19 @@ void loop() {
       for (int i = 0; i < NUM_MOTORS; i++) {
         int sep = data.indexOf(',');
         String val = (sep == -1) ? data : data.substring(0, sep);
-        target_speed_rpm[i] = val.toFloat();
+        float new_rpm = val.toFloat();
+        target_speed_rpm[i] = new_rpm;
+        last_target_speed_rpm[i] = new_rpm;
         pid_enabled[i] = true;
         if (sep == -1) break;
         data = data.substring(sep + 1);
+      }
+
+    } else if (input.equalsIgnoreCase("PAUSE")) {
+      resetPID();
+      for (int i = 0; i < NUM_MOTORS; i++) {
+        setMotor(i, 0);
+        pid_enabled[i] = false;
       }
 
     } else if (input.startsWith("PWM:")) {

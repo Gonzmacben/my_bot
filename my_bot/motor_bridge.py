@@ -127,6 +127,7 @@ class MotorSequenceNode(Node):
         self.get_logger().info("Phase 1 complete: Moved forward.")
 
         self.current_phase = "PAUSE 1"
+        self.send_command("PAUSE")  # Send PAUSE to reset PID on Arduino
         pause_start = time.time()
         while time.time() - pause_start < self.pause_duration:
             self.read_serial_lines()
@@ -158,6 +159,7 @@ class MotorSequenceNode(Node):
         self.get_logger().info("Phase 4 complete: Moved backward.")
 
         self.current_phase = "PAUSE 2"
+        self.send_command("PAUSE")  # Send PAUSE to reset PID on Arduino
         pause_start = time.time()
         while time.time() - pause_start < self.pause_duration:
             self.read_serial_lines()
