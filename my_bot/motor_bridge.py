@@ -94,14 +94,16 @@ def run_sequence():
     while time.time() - start_time < pause_duration:
         read_encoder_callback()
 
-    # Then trigger the linear actuator switch sequence
+    # Trigger linear actuator switch sequence
     switch_linear_actuators()
+
     # Wait enough time for linear actuator to complete (about 21 seconds)
     wait_time = 25
     node.get_logger().info(f"Waiting {wait_time} seconds for linear actuators to complete...")
     start_wait = time.time()
     while time.time() - start_wait < wait_time:
-        break
+        read_encoder_callback()
+        time.sleep(0.05)
 
     # === Phase 3: Move Backward ===
     current_phase = "MOVING BACKWARD"
@@ -131,7 +133,7 @@ def main():
         while not reset_confirmed and time.time() < timeout:
             read_encoder_callback()
 
-        # Run the original forward/backward sequence
+        # Run the original forward/backward sequence with linear actuator switching
         run_sequence()
 
         node.get_logger().info("Sequence completed.")
