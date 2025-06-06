@@ -142,13 +142,6 @@ class MotorSequenceNode(Node):
             time.sleep(0.05)
         self.get_logger().info("Phase 2 complete: Pause done.")
 
-        self.switch_linear_actuators_back()
-        wait_start = time.time()
-        self.get_logger().info(f"Waiting {wait_duration}s for linear actuators to complete reverse switch...")
-        while time.time() - wait_start < wait_duration:
-            self.read_serial_lines()
-            time.sleep(0.05)
-
         self.current_phase = "MOVING BACKWARD"
         start_counts = self.current_encoder.copy()
         self.send_rpm_all(-self.target_rpm)
@@ -167,6 +160,13 @@ class MotorSequenceNode(Node):
             self.read_serial_lines()
             time.sleep(0.05)
         self.get_logger().info("Phase 5 complete: Final pause done.")
+
+        self.switch_linear_actuators_back()
+        wait_start = time.time()
+        self.get_logger().info(f"Waiting {wait_duration}s for linear actuators to complete reverse switch...")
+        while time.time() - wait_start < wait_duration:
+            self.read_serial_lines()
+            time.sleep(0.05)
 
         self.get_logger().info("Full motor control sequence completed.")
 
