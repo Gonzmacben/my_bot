@@ -46,10 +46,16 @@ class MotorSequenceNode(Node):
         self.ser.reset_input_buffer()
         self.send_command("RESET")
 
-    def send_end_op(self):
-        self.end_op_confirmed = False
-        self.ser.reset_input_buffer()
-        self.send_command("END_OP")
+    def wait_for_reset_ok(self, timeout=5.0):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            self.read_serial_lines()
+            if self.reset_confirmed:
+                self.get_logger().info("Received RESET_OK confirmation, continuing sequence.")
+                return True
+            time.sleep(0.05)
+        self.get_logger().error("Timeout waiting for RESET_OK confirmation.")
+        return False
 
     def send_rpm_all(self, rpm):
         rpm_cmd = ','.join([str(float(rpm))] * self.num_motors)
@@ -57,11 +63,6 @@ class MotorSequenceNode(Node):
         self.get_logger().info(f"Preparing to send RPM command: {cmd}")
         self.send_command(cmd)
         self.motors_active = (rpm != 0)
-
-    def send_actuator_pwm(self, pwm1, pwm2):
-        cmd = f"ACT:{int(pwm1)},{int(pwm2)}"
-        self.get_logger().info(f"Sending actuator PWM command: {cmd}")
-        self.send_command(cmd)
 
     def stop_all_motors(self):
         self.send_command("STOP")
@@ -87,10 +88,6 @@ class MotorSequenceNode(Node):
             self.reset_confirmed = True
             self.get_logger().info("[INFO] RESET confirmation received")
 
-        elif line == "END_OP_OK":
-            self.end_op_confirmed = True
-            self.get_logger().info("[INFO] END_OP confirmation received")
-
         elif line.startswith("ENC:"):
             try:
                 values = line[4:].split(',')
@@ -115,19 +112,13 @@ class MotorSequenceNode(Node):
         except Exception as e:
             self.get_logger().warn(f"Error reading serial: {e}")
 
-    def wait_for_confirmation(self, attr_name, timeout=5.0):
-        deadline = time.time() + timeout
-        while not getattr(self, attr_name) and time.time() < deadline:
-            self.read_serial_lines()
-            time.sleep(0.05)
-        return getattr(self, attr_name)
-
     def run_full_sequence(self):
         self.get_logger().info("Starting full motor control sequence...")
 
+        # Enviar RESET y esperar confirmación antes de continuar
         self.reset_encoder()
-        if not self.wait_for_confirmation('reset_confirmed'):
-            self.get_logger().error("Failed to confirm reset, aborting sequence.")
+        if not self.wait_for_reset_ok():
+            self.get_logger().error("No se recibió RESET_OK, abortando secuencia.")
             return
 
         self.current_phase = "MOVING FORWARD"
@@ -138,9 +129,10 @@ class MotorSequenceNode(Node):
             time.sleep(0.05)
         self.stop_all_motors()
 
-        self.send_end_op()
-        if not self.wait_for_confirmation('end_op_confirmed'):
-            self.get_logger().error("Failed to confirm END_OP after forward move.")
+        # Opcional: resetear antes de siguiente fase
+        self.reset_encoder()
+        if not self.wait_for_reset_ok():
+            self.get_logger().error("No se recibió RESET_OK después de mover hacia adelante.")
             return
 
         self.get_logger().info("Phase 1 complete: Moved forward.")
@@ -175,9 +167,10 @@ class MotorSequenceNode(Node):
             time.sleep(0.05)
         self.stop_all_motors()
 
-        self.send_end_op()
-        if not self.wait_for_confirmation('end_op_confirmed'):
-            self.get_logger().error("Failed to confirm END_OP after backward move.")
+        # Resetear y esperar confirmación antes de continuar
+        self.reset_encoder()
+        if not self.wait_for_reset_ok():
+            self.get_logger().error("No se recibió RESET_OK después de mover hacia atrás.")
             return
 
         self.get_logger().info("Phase 4 complete: Moved backward.")

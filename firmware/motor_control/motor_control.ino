@@ -81,17 +81,6 @@ void stopLinearActuators() {
   }
 }
 
-void resetAll() {
-  for (int i = 0; i < NUM_MOTORS; i++) {
-    encoder_count[i] = 0;
-    integral[i] = 0;
-    prev_error[i] = 0;
-    pid_enabled[i] = false;
-    setMotor(i, 0);
-  }
-  stopLinearActuators();
-}
-
 void setup() {
   Serial.begin(57600);
 
@@ -126,10 +115,6 @@ void loop() {
       for (int i = 0; i < NUM_MOTORS; i++) encoder_count[i] = 0;
       Serial.println("RESET_OK");
 
-    } else if (input.equalsIgnoreCase("END_OP")) {
-      resetAll();
-      Serial.println("END_OP_OK");
-
     } else if (input.startsWith("RPM:")) {
       String data = input.substring(4);
       for (int i = 0; i < NUM_MOTORS; i++) {
@@ -141,6 +126,13 @@ void loop() {
         pid_enabled[i] = true;
         if (sep == -1) break;
         data = data.substring(sep + 1);
+      }
+
+    } else if (input.equalsIgnoreCase("PAUSE")) {
+      resetPID();
+      for (int i = 0; i < NUM_MOTORS; i++) {
+        setMotor(i, 0);
+        pid_enabled[i] = false;
       }
 
     } else if (input.startsWith("PWM:")) {
