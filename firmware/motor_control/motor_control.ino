@@ -18,6 +18,7 @@ void resetPID() {
   for (int i = 0; i < NUM_MOTORS; i++) {
     integral[i] = 0;
     prev_error[i] = 0;
+    target_speed_rpm[i] = 0;
   }
 }
 
@@ -86,6 +87,7 @@ void resetAll() {
     encoder_count[i] = 0;
     integral[i] = 0;
     prev_error[i] = 0;
+    target_speed_rpm[i] = 0;
     pid_enabled[i] = false;
     setMotor(i, 0);
   }
@@ -117,6 +119,7 @@ void setup() {
 
 void loop() {
   static float last_target_speed_rpm[NUM_MOTORS] = {0};
+  static long last_counts[NUM_MOTORS] = {0};  // ← persistente entre ciclos PID
 
   if (Serial.available()) {
     String input = Serial.readStringUntil('\n');
@@ -125,6 +128,11 @@ void loop() {
     if (input.equalsIgnoreCase("RESET")) {
       for (int i = 0; i < NUM_MOTORS; i++) encoder_count[i] = 0;
       Serial.println("RESET_OK");
+
+    } else if (input.equalsIgnoreCase("END_OP")) {
+      resetAll();
+      Serial.println("END_OP_OK");
+      Serial.flush();
 
     } else if (input.startsWith("RPM:")) {
       String data = input.substring(4);
@@ -166,10 +174,14 @@ void loop() {
       for (int i = 0; i < NUM_MOTORS; i++) {
         pid_enabled[i] = false;
         setMotor(i, 0);
+
         integral[i] = 0;
         prev_error[i] = 0;
+        target_speed_rpm[i] = 0;
+        last_counts[i] = encoder_count[i];  // 🔄 sincroniza con PID
       }
       stopLinearActuators();
+      Serial.println("STOP_OK");
 
     } else if (input.equalsIgnoreCase("SWITCH")) {
       setLinearActuator(0, 255);
@@ -185,7 +197,6 @@ void loop() {
   if (now - last_pid_time >= PID_INTERVAL) {
     last_pid_time = now;
 
-    static long last_counts[NUM_MOTORS] = {0};
     for (int i = 0; i < NUM_MOTORS; i++) {
       if (!pid_enabled[i]) continue;
 
@@ -218,5 +229,5 @@ void loop() {
       if (i < NUM_MOTORS - 1) Serial.print(",");
     }
     Serial.println();
-  }
+  }
 }
