@@ -63,7 +63,7 @@ def read_encoder_callback():
                 try:
                     values = line[4:].split(',')
                     for i in range(min(num_motors, len(values))):
-                        current_encoder[i] = int(values[i])
+                        current_encoder[i] = float(values[i])
                     if motors_active:
                         node.get_logger().info(f"[{current_phase}] ENC: {current_encoder}")
                 except Exception as e:
