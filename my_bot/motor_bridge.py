@@ -135,7 +135,7 @@ class MotorSequenceNode(Node):
         # Phase 3: Switch linear actuators
         self.switch_linear_actuators()
         wait_start = time.time()
-        wait_duration = 10  # seconds
+        wait_duration = 8  # seconds
         self.get_logger().info(f"Waiting {wait_duration}s for linear actuators to complete...")
         while time.time() - wait_start < wait_duration:
             self.read_serial_lines()
