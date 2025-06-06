@@ -10,7 +10,7 @@ ser = serial.Serial(serial_port, baud_rate, timeout=0.1)
 
 # === CONTROL PARAMETERS ===
 num_motors = 4
-target_rpm = 15.0
+target_rpm = 45.0
 pause_duration = 1.0  # seconds between phases
 target_counts = 3000  # encoder ticks per phase
 
