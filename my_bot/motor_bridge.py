@@ -58,11 +58,6 @@ class MotorSequenceNode(Node):
         self.send_command(cmd)
         self.motors_active = (rpm != 0)
 
-    def send_actuator_pwm(self, pwm1, pwm2):
-        cmd = f"ACT:{int(pwm1)},{int(pwm2)}"
-        self.get_logger().info(f"Sending actuator PWM command: {cmd}")
-        self.send_command(cmd)
-
     def stop_all_motors(self):
         self.send_command("STOP")
         self.motors_active = False

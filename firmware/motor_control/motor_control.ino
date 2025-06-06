@@ -129,6 +129,7 @@ void loop() {
     } else if (input.equalsIgnoreCase("END_OP")) {
       resetAll();
       Serial.println("END_OP_OK");
+      Serial.flush();
 
     } else if (input.startsWith("RPM:")) {
       String data = input.substring(4);
