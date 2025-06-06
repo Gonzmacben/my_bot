@@ -83,7 +83,6 @@ class MotorSequenceNode(Node):
             return
 
         self.get_logger().debug(f"Processing line: {repr(line)}")
-        time.sleep(0.05)
 
         if line == "RESET_OK":
             self.reset_confirmed = True
@@ -130,7 +129,6 @@ class MotorSequenceNode(Node):
             time.sleep(0.05)
         self.stop_all_motors()
 
-        # Opcional: resetear antes de siguiente fase
         self.reset_encoder()
         if not self.wait_for_reset_ok():
             self.get_logger().error("No se recibió RESET_OK después de mover hacia adelante.")
