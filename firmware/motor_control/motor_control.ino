@@ -60,6 +60,7 @@ void loop() {
   if (Serial.available()) {
     String input = Serial.readStringUntil('\n');
     input.trim();
+
     /*
     if (input.equalsIgnoreCase("RESET")) {
       for (int i = 0; i < NUM_MOTORS; i++) encoder_count[i] = 0;
@@ -98,6 +99,11 @@ void loop() {
     }
       */
   }
+
+  for (int i = 0; i < NUM_MOTORS; i++) {
+    pid_enabled[i] = true;
+  }
+
 
   unsigned long now = millis();
   if (now - last_pid_time >= PID_INTERVAL) {
