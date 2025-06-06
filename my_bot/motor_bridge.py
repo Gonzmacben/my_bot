@@ -115,6 +115,14 @@ class MotorSequenceNode(Node):
             self.get_logger().error("Failed to confirm reset, aborting sequence.")
             return
 
+        self.switch_linear_actuators()
+        wait_start = time.time()
+        wait_duration = 4
+        self.get_logger().info(f"Waiting {wait_duration}s for linear actuators to complete forward switch...")
+        while time.time() - wait_start < wait_duration:
+            self.read_serial_lines()
+            time.sleep(0.05)
+    
         self.current_phase = "MOVING FORWARD"
         start_counts = self.current_encoder.copy()
         self.send_rpm_all(self.target_rpm)
@@ -133,14 +141,6 @@ class MotorSequenceNode(Node):
             self.read_serial_lines()
             time.sleep(0.05)
         self.get_logger().info("Phase 2 complete: Pause done.")
-
-        self.switch_linear_actuators()
-        wait_start = time.time()
-        wait_duration = 4
-        self.get_logger().info(f"Waiting {wait_duration}s for linear actuators to complete forward switch...")
-        while time.time() - wait_start < wait_duration:
-            self.read_serial_lines()
-            time.sleep(0.05)
 
         self.switch_linear_actuators_back()
         wait_start = time.time()
