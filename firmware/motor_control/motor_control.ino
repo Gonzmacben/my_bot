@@ -126,11 +126,6 @@ void loop() {
       for (int i = 0; i < NUM_MOTORS; i++) encoder_count[i] = 0;
       Serial.println("RESET_OK");
 
-    } else if (input.equalsIgnoreCase("END_OP")) {
-      resetAll();
-      Serial.println("END_OP_OK");
-      Serial.flush();
-
     } else if (input.startsWith("RPM:")) {
       String data = input.substring(4);
       for (int i = 0; i < NUM_MOTORS; i++) {

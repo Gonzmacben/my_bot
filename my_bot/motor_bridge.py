@@ -26,7 +26,6 @@ class MotorSequenceNode(Node):
 
         self.current_encoder = [0.0] * self.num_motors
         self.reset_confirmed = False
-        self.end_op_confirmed = False
         self.current_phase = ""
         self.motors_active = False
         self.serial_buffer = ""
@@ -45,11 +44,6 @@ class MotorSequenceNode(Node):
         self.reset_confirmed = False
         self.ser.reset_input_buffer()
         self.send_command("RESET")
-
-    def send_end_op(self):
-        self.end_op_confirmed = False
-        self.ser.reset_input_buffer()
-        self.send_command("END_OP")
 
     def send_rpm_all(self, rpm):
         rpm_cmd = ','.join([str(float(rpm))] * self.num_motors)
@@ -81,10 +75,6 @@ class MotorSequenceNode(Node):
         if line == "RESET_OK":
             self.reset_confirmed = True
             self.get_logger().info("[INFO] RESET confirmation received")
-
-        elif line == "END_OP_OK":
-            self.end_op_confirmed = True
-            self.get_logger().info("[INFO] END_OP confirmation received")
 
         elif line.startswith("ENC:"):
             try:
@@ -133,10 +123,7 @@ class MotorSequenceNode(Node):
             time.sleep(0.05)
         self.stop_all_motors()
 
-        self.send_end_op()
-        if not self.wait_for_confirmation('end_op_confirmed'):
-            self.get_logger().error("Failed to confirm END_OP after forward move.")
-            return
+        # No END_OP here anymore
 
         self.get_logger().info("Phase 1 complete: Moved forward.")
 
@@ -170,10 +157,7 @@ class MotorSequenceNode(Node):
             time.sleep(0.05)
         self.stop_all_motors()
 
-        self.send_end_op()
-        if not self.wait_for_confirmation('end_op_confirmed'):
-            self.get_logger().error("Failed to confirm END_OP after backward move.")
-            return
+        # No END_OP here either
 
         self.get_logger().info("Phase 4 complete: Moved backward.")
 
