@@ -16,7 +16,7 @@ const bool invert_motor_dir[NUM_MOTORS] = {false, true, false, true};
 // Encoder ISR handler
 void encoderISR(int i) {
   int b_val = digitalRead(ENC_B[i]);
-  encoder_count[i] += (invert_encoder[i] ? (b_val == HIGH ? -1 : 1) : (b_val == HIGH ? 1 : -1));
+  encoder_count[i] += (invert_encoder[i] ? (b_val == HIGH ? 1 : -1) : (b_val == HIGH ? -1 : 1));
 }
 
 void encoderISR0() { encoderISR(0); }
