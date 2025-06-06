@@ -42,7 +42,7 @@ const int LINEAR_ACTUATOR_IN2[2] = {26, 28}; // Reverse control pins
 
 // PID constants per motor (example values)
 const float Kp[NUM_MOTORS] = {2.5, 2.5, 2.5, 2.5};
-const float Ki[NUM_MOTORS] = {0.8, 0.8, 0.8, 0.8}; //
+const float Ki[NUM_MOTORS] = {0.01, 0.01, 0.01, 0.01}; // 0.8, 0.8, 0.8, 0.8
 const float Kd[NUM_MOTORS] = {0.6, 0.6, 0.6, 0.6};
 const float Ko[NUM_MOTORS] = {1.0, 1.0, 1.0, 1.0};
 
