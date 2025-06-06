@@ -152,6 +152,11 @@ class MotorSequenceNode(Node):
             self.read_serial_lines()
             time.sleep(0.05)
 
+        self.reset_encoder()
+        if not self.wait_for_reset_ok():
+            self.get_logger().error("No se recibió RESET_OK después de mover hacia atrás.")
+            return
+
         self.switch_linear_actuators_back()
         wait_start = time.time()
         self.get_logger().info(f"Waiting {wait_duration}s for linear actuators to complete reverse switch...")
@@ -166,12 +171,6 @@ class MotorSequenceNode(Node):
             self.read_serial_lines()
             time.sleep(0.05)
         self.stop_all_motors()
-
-        # Resetear y esperar confirmación antes de continuar
-        self.reset_encoder()
-        if not self.wait_for_reset_ok():
-            self.get_logger().error("No se recibió RESET_OK después de mover hacia atrás.")
-            return
 
         self.get_logger().info("Phase 4 complete: Moved backward.")
 
