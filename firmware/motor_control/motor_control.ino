@@ -1,5 +1,19 @@
 #include <Arduino.h>
+#include <Wire.h>
+#include <MPU6050.h>
 #include "motor_config.h"
+
+// === MPU6050 Gyro Variables ===
+MPU6050 sensor;
+
+float giroscAngZ = 0, giroscAngZPrev = 0;
+unsigned long tiempoPrevGyro = 0;
+float integral_gyro = 0;
+float error_gyro = 0, prev_error_gyro = 0;
+const float Kp_gyro = 23.67;
+const float Ki_gyro = 6.39;
+const float Kd_gyro = 9.02;
+const float integral_limit_gyro = 1000.0;
 
 // === PID Motors Variables ===
 volatile long encoder_count[NUM_MOTORS] = {0};
@@ -17,14 +31,14 @@ void setLinearActuator(int i, int pwm_val) {
   pwm = constrain(pwm, 0, 255);
 
   if (pwm_val > 0) {
-    analogWrite(LINEAR_MOTOR_IN1[i], pwm);
-    digitalWrite(LINEAR_MOTOR_IN2[i], LOW);
+    analogWrite(LINEAR_ACTUATOR_IN1[i], pwm);
+    digitalWrite(LINEAR_ACTUATOR_IN2[i], LOW);
   } else if (pwm_val < 0) {
-    digitalWrite(LINEAR_MOTOR_IN1[i], LOW);
-    analogWrite(LINEAR_MOTOR_IN2[i], pwm);
+    digitalWrite(LINEAR_ACTUATOR_IN1[i], LOW);
+    analogWrite(LINEAR_ACTUATOR_IN2[i], pwm);
   } else {
-    digitalWrite(LINEAR_MOTOR_IN1[i], LOW);
-    digitalWrite(LINEAR_MOTOR_IN2[i], LOW);
+    digitalWrite(LINEAR_ACTUATOR_IN1[i], LOW);
+    digitalWrite(LINEAR_ACTUATOR_IN2[i], LOW);
   }
 }
 
@@ -56,25 +70,15 @@ void switchLinearActuators() {
 // === PID Motors Functions ===
 
 // Encoder ISRs for each motor
-void encoderISR0() {
-  int b_val = digitalRead(ENC_B[0]);
-  encoder_count[0] += (b_val == HIGH ? 1 : -1);
+void encoderISR(int i) {
+  int b_val = digitalRead(ENC_B[i]);
+  encoder_count[i] += (b_val == HIGH ? 1 : -1);
 }
 
-void encoderISR1() {
-  int b_val = digitalRead(ENC_B[1]);
-  encoder_count[1] += (b_val == HIGH ? 1 : -1);
-}
-
-void encoderISR2() {
-  int b_val = digitalRead(ENC_B[2]);
-  encoder_count[2] += (b_val == HIGH ? 1 : -1);
-}
-
-void encoderISR3() {
-  int b_val = digitalRead(ENC_B[3]);
-  encoder_count[3] += (b_val == HIGH ? 1 : -1);
-}
+void encoderISR0() { encoderISR(0); }
+void encoderISR1() { encoderISR(1); }
+void encoderISR2() { encoderISR(2); }
+void encoderISR3() { encoderISR(3); }
 
 void setMotor(int i, int pwm_val) {
   int pwm = abs(pwm_val);
@@ -116,10 +120,22 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(ENC_A[2]), encoderISR2, RISING);
   attachInterrupt(digitalPinToInterrupt(ENC_A[3]), encoderISR3, RISING);
 
+  // Initialize MPU6050
+  Wire.begin();
+  sensor.initialize();
+
+  if (sensor.testConnection())
+    Serial.println("MPU6050 iniciado correctamente");
+  else
+    Serial.println("Error al iniciar MPU6050");
+
+  tiempoPrevGyro = millis();
+
   Serial.println("Arduino motor control ready");
 }
 
 void loop() {
+  // Handle serial commands
   if (Serial.available()) {
     String input = Serial.readStringUntil('\n');
     input.trim();
@@ -161,7 +177,6 @@ void loop() {
       stopLinearActuators();
 
     } else if (input.equalsIgnoreCase("SWITCH")) {
-      // Run the linear actuator extend/retract sequence
       switchLinearActuators();
     }
   }
@@ -170,6 +185,32 @@ void loop() {
   unsigned long now = millis();
   if (now - last_pid_time >= PID_INTERVAL_MS) {
     last_pid_time = now;
+
+    // Calculate dt for gyro
+    unsigned long currentTimeGyro = millis();
+    float dtGyro = (currentTimeGyro - tiempoPrevGyro) / 1000.0;
+    tiempoPrevGyro = currentTimeGyro;
+    if (dtGyro <= 0) dtGyro = 0.001;
+
+    // Read gyro Z axis rotation
+    int gx, gy, gz;
+    sensor.getRotation(&gx, &gy, &gz);
+
+    // Integrate gyro Z rate to get angle
+    giroscAngZ = (gz / 131.0) * dtGyro + giroscAngZPrev;
+    giroscAngZPrev = giroscAngZ;
+
+    // Compute gyro PID error (target angle = 0)
+    error_gyro = 0 - giroscAngZ;
+    integral_gyro += error_gyro * dtGyro;
+    if (integral_gyro > integral_limit_gyro) integral_gyro = integral_limit_gyro;
+    if (integral_gyro < -integral_limit_gyro) integral_gyro = -integral_limit_gyro;
+
+    float p_gyro = Kp_gyro * error_gyro;
+    float i_gyro = Ki_gyro * integral_gyro;
+    float d_gyro = Kd_gyro * (error_gyro - prev_error_gyro) / dtGyro;
+    float PID_gyro = p_gyro + i_gyro + d_gyro;
+    prev_error_gyro = error_gyro;
 
     static long last_counts[NUM_MOTORS] = {0};
     for (int i = 0; i < NUM_MOTORS; i++) {
@@ -188,7 +229,15 @@ void loop() {
       float output = Kp[i] * error + Ki[i] * integral[i] + Kd[i] * derivative;
       output *= Ko[i];
 
-      int pwm = constrain((int)output, -255, 255);
+      // Add gyro PID correction to motor PWM
+      float output_with_gyro;
+      if (i % 2 == 0) {  // Assuming even index = left motors
+        output_with_gyro = output + PID_gyro;
+      } else {           // Odd index = right motors
+        output_with_gyro = output - PID_gyro;
+      }
+
+      int pwm = constrain((int)output_with_gyro, -255, 255);
       setMotor(i, pwm);
     }
 
