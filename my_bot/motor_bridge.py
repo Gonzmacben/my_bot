@@ -26,6 +26,7 @@ class MotorSequenceNode(Node):
 
         self.current_encoder = [0.0] * self.num_motors
         self.reset_confirmed = False
+        self.end_op_confirmed = False
         self.current_phase = ""
         self.motors_active = False
         self.serial_buffer = ""
@@ -44,6 +45,11 @@ class MotorSequenceNode(Node):
         self.reset_confirmed = False
         self.ser.reset_input_buffer()
         self.send_command("RESET")
+
+    def send_end_op(self):
+        self.end_op_confirmed = False
+        self.ser.reset_input_buffer()
+        self.send_command("END_OP")
 
     def send_rpm_all(self, rpm):
         rpm_cmd = ','.join([str(float(rpm))] * self.num_motors)
@@ -81,6 +87,10 @@ class MotorSequenceNode(Node):
             self.reset_confirmed = True
             self.get_logger().info("[INFO] RESET confirmation received")
 
+        elif line == "END_OP_OK":
+            self.end_op_confirmed = True
+            self.get_logger().info("[INFO] END_OP confirmation received")
+
         elif line.startswith("ENC:"):
             try:
                 values = line[4:].split(',')
@@ -105,15 +115,18 @@ class MotorSequenceNode(Node):
         except Exception as e:
             self.get_logger().warn(f"Error reading serial: {e}")
 
+    def wait_for_confirmation(self, attr_name, timeout=5.0):
+        deadline = time.time() + timeout
+        while not getattr(self, attr_name) and time.time() < deadline:
+            self.read_serial_lines()
+            time.sleep(0.05)
+        return getattr(self, attr_name)
+
     def run_full_sequence(self):
         self.get_logger().info("Starting full motor control sequence...")
 
         self.reset_encoder()
-        timeout = time.time() + 5.0
-        while not self.reset_confirmed and time.time() < timeout:
-            self.read_serial_lines()
-            time.sleep(0.05)
-        if not self.reset_confirmed:
+        if not self.wait_for_confirmation('reset_confirmed'):
             self.get_logger().error("Failed to confirm reset, aborting sequence.")
             return
 
@@ -124,10 +137,15 @@ class MotorSequenceNode(Node):
             self.read_serial_lines()
             time.sleep(0.05)
         self.stop_all_motors()
+
+        self.send_end_op()
+        if not self.wait_for_confirmation('end_op_confirmed'):
+            self.get_logger().error("Failed to confirm END_OP after forward move.")
+            return
+
         self.get_logger().info("Phase 1 complete: Moved forward.")
 
         self.current_phase = "PAUSE 1"
-        self.send_command("PAUSE")  # Send PAUSE to reset PID on Arduino
         pause_start = time.time()
         while time.time() - pause_start < self.pause_duration:
             self.read_serial_lines()
@@ -156,10 +174,15 @@ class MotorSequenceNode(Node):
             self.read_serial_lines()
             time.sleep(0.05)
         self.stop_all_motors()
+
+        self.send_end_op()
+        if not self.wait_for_confirmation('end_op_confirmed'):
+            self.get_logger().error("Failed to confirm END_OP after backward move.")
+            return
+
         self.get_logger().info("Phase 4 complete: Moved backward.")
 
         self.current_phase = "PAUSE 2"
-        self.send_command("PAUSE")  # Send PAUSE to reset PID on Arduino
         pause_start = time.time()
         while time.time() - pause_start < self.pause_duration:
             self.read_serial_lines()
