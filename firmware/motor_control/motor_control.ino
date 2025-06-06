@@ -111,6 +111,7 @@ void loop() {
       }
       Serial.println("RESET_OK");
 
+      
     } else if (input.startsWith("RPM:")) {
       String data = input.substring(4);
       for (int i = 0; i < NUM_MOTORS; i++) {
