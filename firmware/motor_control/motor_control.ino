@@ -1,89 +1,17 @@
 #include <Arduino.h>
-#include <Wire.h>
-#include <MPU6050.h>
 #include "motor_config.h"
 
-// === MPU6050 Gyro Variables ===
-MPU6050 sensor;
-
-float giroscAngZ = 0, giroscAngZPrev = 0;
-unsigned long tiempoPrevGyro = 0;
-float integral_gyro = 0;
-float error_gyro = 0, prev_error_gyro = 0;
-const float Kp_gyro = 23.67;
-const float Ki_gyro = 6.39;
-const float Kd_gyro = 9.02;
-const float integral_limit_gyro = 1000.0;
-
-// === PID Motors Variables ===
+// Encoder counts for 4 motors
 volatile long encoder_count[NUM_MOTORS] = {0};
-float target_speed_rpm[NUM_MOTORS] = {0};
-float integral[NUM_MOTORS] = {0};
-float prev_error[NUM_MOTORS] = {0};
-bool pid_enabled[NUM_MOTORS] = {false};
 
-unsigned long last_pid_time = 0;
+// Target encoder counts for movement phases
+const long target_counts = 10000;  // Adjust as needed
+const unsigned long pause_duration_ms = 3000;  // 3 seconds pause
 
-// === Linear Motors Control ===
-
-void setLinearActuator(int i, int pwm_val) {
-  int pwm = abs(pwm_val);
-  pwm = constrain(pwm, 0, 255);
-
-  if (pwm_val > 0) {
-    analogWrite(LINEAR_ACTUATOR_IN1[i], pwm);
-    digitalWrite(LINEAR_ACTUATOR_IN2[i], LOW);
-  } else if (pwm_val < 0) {
-    digitalWrite(LINEAR_ACTUATOR_IN1[i], LOW);
-    analogWrite(LINEAR_ACTUATOR_IN2[i], pwm);
-  } else {
-    digitalWrite(LINEAR_ACTUATOR_IN1[i], LOW);
-    digitalWrite(LINEAR_ACTUATOR_IN2[i], LOW);
-  }
-}
-
-void extendLinearActuators() {
-  setLinearActuator(0, 255);
-  setLinearActuator(1, 255);
-}
-
-void retractLinearActuators() {
-  setLinearActuator(0, -255);
-  setLinearActuator(1, -255);
-}
-
-void stopLinearActuators() {
-  setLinearActuator(0, 0);
-  setLinearActuator(1, 0);
-}
-
-void switchLinearActuators() {
-  extendLinearActuators();
-  delay(10000); // Extend for 10 seconds
-  stopLinearActuators();
-  delay(500);
-  retractLinearActuators();
-  delay(10000); // Retract for 10 seconds
-  stopLinearActuators();
-}
-
-// === PID Motors Functions ===
-
-// Encoder ISRs for each motor
-void encoderISR(int i) {
-  int b_val = digitalRead(ENC_B[i]);
-  encoder_count[i] += (b_val == HIGH ? 1 : -1);
-}
-
-void encoderISR0() { encoderISR(0); }
-void encoderISR1() { encoderISR(1); }
-void encoderISR2() { encoderISR(2); }
-void encoderISR3() { encoderISR(3); }
-
+// Motor control functions
 void setMotor(int i, int pwm_val) {
   int pwm = abs(pwm_val);
   pwm = constrain(pwm, 0, 255);
-  if (pwm < 40 && pwm_val != 0) pwm = 40;
 
   if (pwm_val > 0) {
     analogWrite(MOTOR_IN1[i], pwm);
@@ -97,10 +25,66 @@ void setMotor(int i, int pwm_val) {
   }
 }
 
+void stopAllMotors() {
+  for (int i = 0; i < NUM_MOTORS; i++) {
+    setMotor(i, 0);
+  }
+}
+
+// Encoder ISR handlers (example for 4 motors)
+void encoderISR0() { encoder_count[0]++; }
+void encoderISR1() { encoder_count[1]++; }
+void encoderISR2() { encoder_count[2]++; }
+void encoderISR3() { encoder_count[3]++; }
+
+// Linear actuator control (example)
+void extendLinearActuators();
+void retractLinearActuators();
+void stopLinearActuators();
+void switchLinearActuators() {
+  extendLinearActuators();
+  delay(10000);
+  stopLinearActuators();
+  delay(500);
+  retractLinearActuators();
+  delay(10000);
+  stopLinearActuators();
+}
+
+void extendLinearActuators() {
+  // Implement your linear actuator extension logic here
+}
+
+void retractLinearActuators() {
+  // Implement your linear actuator retraction logic here
+}
+
+void stopLinearActuators() {
+  // Implement your linear actuator stop logic here
+}
+
+// Wait until all motors have moved target_counts since start_counts
+bool reachedTargetCounts(long start_counts[]) {
+  for (int i = 0; i < NUM_MOTORS; i++) {
+    if (abs(encoder_count[i] - start_counts[i]) < target_counts) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void resetEncoders() {
+  noInterrupts();
+  for (int i = 0; i < NUM_MOTORS; i++) {
+    encoder_count[i] = 0;
+  }
+  interrupts();
+}
+
 void setup() {
   Serial.begin(57600);
 
-  // Setup PID motors pins
+  // Setup motor pins
   for (int i = 0; i < NUM_MOTORS; i++) {
     pinMode(MOTOR_IN1[i], OUTPUT);
     pinMode(MOTOR_IN2[i], OUTPUT);
@@ -108,145 +92,66 @@ void setup() {
     pinMode(ENC_B[i], INPUT_PULLUP);
   }
 
-  // Setup linear motors pins
-  for (int i = 0; i < NUM_ACTUATORS; i++) {
-    pinMode(LINEAR_ACTUATOR_IN1[i], OUTPUT);
-    pinMode(LINEAR_ACTUATOR_IN2[i], OUTPUT);
-  }
-
-  // Attach interrupts for encoder channels
+  // Attach encoder interrupts
   attachInterrupt(digitalPinToInterrupt(ENC_A[0]), encoderISR0, RISING);
   attachInterrupt(digitalPinToInterrupt(ENC_A[1]), encoderISR1, RISING);
   attachInterrupt(digitalPinToInterrupt(ENC_A[2]), encoderISR2, RISING);
   attachInterrupt(digitalPinToInterrupt(ENC_A[3]), encoderISR3, RISING);
 
-  // Initialize MPU6050
-  Wire.begin();
-  sensor.initialize();
-
-  if (sensor.testConnection())
-    Serial.println("MPU6050 iniciado correctamente");
-  else
-    Serial.println("Error al iniciar MPU6050");
-
-  tiempoPrevGyro = millis();
-
-  Serial.println("Arduino motor control ready");
+  Serial.println("Motor control ready");
 }
 
 void loop() {
-  // Handle serial commands
-  if (Serial.available()) {
-    String input = Serial.readStringUntil('\n');
-    input.trim();
+  // Phase 1: Move forward
+  Serial.println("Phase 1: Moving forward");
+  long start_counts[NUM_MOTORS];
+  noInterrupts();
+  for (int i = 0; i < NUM_MOTORS; i++) start_counts[i] = encoder_count[i];
+  interrupts();
 
-    if (input.equalsIgnoreCase("RESET")) {
-      for (int i = 0; i < NUM_MOTORS; i++) encoder_count[i] = 0;
-      Serial.println("RESET_OK");
+  // Set all motors forward at fixed PWM (e.g., 150)
+  for (int i = 0; i < NUM_MOTORS; i++) setMotor(i, 150);
 
-    } else if (input.startsWith("RPM:")) {
-      String data = input.substring(4);
-      for (int i = 0; i < NUM_MOTORS; i++) {
-        int sep = data.indexOf(',');
-        String val = (sep == -1) ? data : data.substring(0, sep);
-        target_speed_rpm[i] = val.toFloat();
-        pid_enabled[i] = true;
-        if (sep == -1) break;
-        data = data.substring(sep + 1);
-      }
+  while (!reachedTargetCounts(start_counts)) {
+    // Optionally, add small delay or monitor encoders
+    delay(10);
+  }
+  stopAllMotors();
 
-    } else if (input.startsWith("PWM:")) {
-      String data = input.substring(4);
-      for (int i = 0; i < NUM_MOTORS; i++) {
-        int sep = data.indexOf(',');
-        String val = (sep == -1) ? data : data.substring(0, sep);
-        int pwm_val = val.toInt();
-        pid_enabled[i] = false;
-        setMotor(i, pwm_val);
-        if (sep == -1) break;
-        data = data.substring(sep + 1);
-      }
-
-    } else if (input.equalsIgnoreCase("STOP")) {
-      for (int i = 0; i < NUM_MOTORS; i++) {
-        pid_enabled[i] = false;
-        setMotor(i, 0);
-        integral[i] = 0;
-        prev_error[i] = 0;
-      }
-      stopLinearActuators();
-
-    } else if (input.equalsIgnoreCase("SWITCH")) {
-      switchLinearActuators();
-    }
+  // Phase 2: Pause
+  Serial.println("Phase 2: Pause");
+  unsigned long pause_start = millis();
+  while (millis() - pause_start < pause_duration_ms) {
+    delay(10);
   }
 
-  // PID control loop
-  unsigned long now = millis();
-  if (now - last_pid_time >= PID_INTERVAL_MS) {
-    last_pid_time = now;
+  // Phase 3: Switch linear actuators
+  Serial.println("Phase 3: Switching linear actuators");
+  switchLinearActuators();
 
-    // Calculate dt for gyro
-    unsigned long currentTimeGyro = millis();
-    float dtGyro = (currentTimeGyro - tiempoPrevGyro) / 1000.0;
-    tiempoPrevGyro = currentTimeGyro;
-    if (dtGyro <= 0) dtGyro = 0.001;
+  // Phase 4: Move backward
+  Serial.println("Phase 4: Moving backward");
+  noInterrupts();
+  for (int i = 0; i < NUM_MOTORS; i++) start_counts[i] = encoder_count[i];
+  interrupts();
 
-    // Read gyro Z axis rotation
-    int gx, gy, gz;
-    sensor.getRotation(&gx, &gy, &gz);
+  // Set all motors backward at fixed PWM (e.g., -150)
+  for (int i = 0; i < NUM_MOTORS; i++) setMotor(i, -150);
 
-    // Integrate gyro Z rate to get angle
-    giroscAngZ = (gz / 131.0) * dtGyro + giroscAngZPrev;
-    giroscAngZPrev = giroscAngZ;
+  while (!reachedTargetCounts(start_counts)) {
+    delay(10);
+  }
+  stopAllMotors();
 
-    // Compute gyro PID error (target angle = 0)
-    error_gyro = 0 - giroscAngZ;
-    integral_gyro += error_gyro * dtGyro;
-    if (integral_gyro > integral_limit_gyro) integral_gyro = integral_limit_gyro;
-    if (integral_gyro < -integral_limit_gyro) integral_gyro = -integral_limit_gyro;
+  // Phase 5: Final pause
+  Serial.println("Phase 5: Final pause");
+  pause_start = millis();
+  while (millis() - pause_start < pause_duration_ms) {
+    delay(10);
+  }
 
-    float p_gyro = Kp_gyro * error_gyro;
-    float i_gyro = Ki_gyro * integral_gyro;
-    float d_gyro = Kd_gyro * (error_gyro - prev_error_gyro) / dtGyro;
-    float PID_gyro = p_gyro + i_gyro + d_gyro;
-    prev_error_gyro = error_gyro;
-
-    static long last_counts[NUM_MOTORS] = {0};
-    for (int i = 0; i < NUM_MOTORS; i++) {
-      if (!pid_enabled[i]) continue;
-
-      long delta = encoder_count[i] - last_counts[i];
-      last_counts[i] = encoder_count[i];
-
-      float measured_rpm = ((float)delta / TICKS_PER_REV) * (MS_PER_MIN / PID_INTERVAL_MS);
-      float error = target_speed_rpm[i] - measured_rpm;
-
-      integral[i] += error;
-      float derivative = error - prev_error[i];
-      prev_error[i] = error;
-
-      float output = Kp[i] * error + Ki[i] * integral[i] + Kd[i] * derivative;
-      output *= Ko[i];
-
-      // Add gyro PID correction to motor PWM
-      float output_with_gyro;
-      if (i % 2 == 0) {  // Assuming even index = left motors
-        output_with_gyro = output + PID_gyro;
-      } else {           // Odd index = right motors
-        output_with_gyro = output - PID_gyro;
-      }
-
-      int pwm = constrain((int)output_with_gyro, -255, 255);
-      setMotor(i, pwm);
-    }
-
-    // Send encoder counts via serial
-    Serial.print("ENC:");
-    for (int i = 0; i < NUM_MOTORS; i++) {
-      Serial.print(encoder_count[i]);
-      if (i < (NUM_MOTORS - 1)) Serial.print(",");
-    }
-    Serial.println();
+  Serial.println("Sequence complete");
+  while (true) {
+    delay(1000);  // Stop here
   }
 }
