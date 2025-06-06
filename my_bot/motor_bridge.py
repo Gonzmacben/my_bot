@@ -1,86 +1,148 @@
-#!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import Twist
-from std_msgs.msg import Int32
 import serial
-import threading
+import time
 
-node = None
-ser = None
-serial_lock = threading.Lock()
-pub_encoder = None
+# === SERIAL CONFIGURATION ===
+serial_port = '/dev/ttyACM0'  # Adjust as needed
+baud_rate = 57600
+ser = serial.Serial(serial_port, baud_rate, timeout=0.1)
 
-def cmd_vel_callback(msg):
-    linear_vel = msg.linear.x
-    # Convert linear velocity (m/s) to ticks per PID interval
-    wheel_diameter = 0.065  # meters
-    ticks_per_rev = 3018
-    pid_interval = 0.033  # seconds
+# === CONTROL PARAMETERS ===
+num_motors = 4
+target_rpm = 15.0
+pause_duration = 1.0  # seconds between phases
+target_counts = 3000  # encoder ticks per phase
 
-    wheel_circumference = 3.14159 * wheel_diameter
-    ticks_per_sec = (linear_vel / wheel_circumference) * ticks_per_rev
-    target_ticks = int(ticks_per_sec * pid_interval)
+# === GLOBAL VARIABLES ===
+current_encoder = [0] * num_motors
+reset_confirmed = False
+current_phase = ""
+motors_active = False  # Flag indicating if motors are active
 
-    cmd_str = f"V:{target_ticks}\n"
-    with serial_lock:
-        try:
-            ser.write(cmd_str.encode('utf-8'))
-            node.get_logger().debug(f"Sent: {cmd_str.strip()}")
-        except Exception as e:
-            node.get_logger().error(f"Serial write error: {e}")
+def send_command(cmd):
+    ser.write((cmd + '\n').encode('utf-8'))
 
-def read_serial_loop():
-    while rclpy.ok():
-        try:
-            if ser.in_waiting:
-                line = ser.readline().decode('utf-8').strip()
-                if line.startswith("ENC:"):
-                    try:
-                        ticks = int(line[4:])
-                        msg = Int32()
-                        msg.data = ticks
-                        pub_encoder.publish(msg)
-                        node.get_logger().debug(f"Encoder ticks: {ticks}")
-                    except ValueError:
-                        node.get_logger().warn(f"Invalid encoder data: {line}")
-                else:
-                    node.get_logger().info(f"Arduino: {line}")
-        except Exception as e:
-            node.get_logger().warn(f"Serial read error: {e}")
+def reset_encoder():
+    global reset_confirmed
+    reset_confirmed = False
+    ser.reset_input_buffer()  # Clear buffer before reset
+    send_command("RESET")
 
-def main(args=None):
-    global node, ser, pub_encoder
+def send_rpm_all(rpm):
+    global motors_active
+    rpm_cmd = ','.join([str(rpm)] * num_motors)
+    cmd = f"RPM:{rpm_cmd}"
+    send_command(cmd)
+    motors_active = (rpm != 0)
+    if motors_active:
+        node.get_logger().info(f"RPM sent to all motors: {cmd}")
 
-    rclpy.init(args=args)
-    node = Node("motor_bridge")
+def stop_all_motors():
+    global motors_active
+    send_command("STOP")  
+    motors_active = False
+    node.get_logger().info("Motors stopped.")
 
-    port = node.declare_parameter("port", "/dev/ttyUSB0").value
-    baud = node.declare_parameter("baud", 57600).value
+def switch_linear_actuators():
+    send_command("SWITCH")
+    node.get_logger().info("Sent SWITCH command to linear actuators")
 
+def read_encoder_callback():
+    global current_encoder, reset_confirmed
     try:
-        ser = serial.Serial(port, baudrate=baud, timeout=0.1)
-        node.get_logger().info(f"Connected to Arduino on {port} at {baud} baud")
+        while ser.in_waiting:
+            line = ser.readline().decode('utf-8').strip()
+            if line == "RESET_OK":
+                reset_confirmed = True
+                node.get_logger().info("[INFO] RESET confirmation received")
+
+            elif line.startswith("ENC:"):
+                try:
+                    values = line[4:].split(',')
+                    for i in range(min(num_motors, len(values))):
+                        current_encoder[i] = int(values[i])
+                    if motors_active:
+                        node.get_logger().info(f"[{current_phase}] ENC: {current_encoder}")
+                except Exception as e:
+                    node.get_logger().warn(f"Error processing serial line '{line}': {e}")
+
+            elif line.lstrip('-').isdigit():
+                if motors_active:
+                    node.get_logger().info(f"[{current_phase}] Unknown encoder value: {line}")
+
+            else:
+                node.get_logger().debug(f"Ignored: {line}")
     except Exception as e:
-        node.get_logger().error(f"Failed to open serial port: {e}")
-        rclpy.shutdown()
-        return
+        node.get_logger().warn(f"Error reading serial: {e}")
 
-    pub_encoder = node.create_publisher(Int32, "motor/encoder_ticks", 10)
-    node.create_subscription(Twist, "cmd_vel", cmd_vel_callback, 10)
+def run_sequence():
+    global current_phase, current_encoder
 
-    thread = threading.Thread(target=read_serial_loop, daemon=True)
-    thread.start()
+    # === Phase 1: Move Forward ===
+    current_phase = "MOVING FORWARD"
+    initial_encoders = current_encoder.copy()
+    send_rpm_all(target_rpm)
+
+    while all(abs(current_encoder[i] - initial_encoders[i]) < target_counts for i in range(num_motors)):
+        read_encoder_callback()
+    stop_all_motors()
+
+    # === Phase 2: Pause ===
+    current_phase = "PAUSE 1"
+    start_time = time.time()
+    while time.time() - start_time < pause_duration:
+        read_encoder_callback()
+
+    # Then trigger the linear actuator switch sequence
+    switch_linear_actuators()
+    # Wait enough time for linear actuator to complete (about 21 seconds)
+    wait_time = 25
+    node.get_logger().info(f"Waiting {wait_time} seconds for linear actuators to complete...")
+    start_wait = time.time()
+    while time.time() - start_wait < wait_time:
+        break
+
+    # === Phase 3: Move Backward ===
+    current_phase = "MOVING BACKWARD"
+    initial_encoders = current_encoder.copy()
+    send_rpm_all(-target_rpm)
+
+    while all(abs(current_encoder[i] - initial_encoders[i]) < target_counts for i in range(num_motors)):
+        read_encoder_callback()
+    stop_all_motors()
+
+    # === Phase 4: Final Pause ===
+    current_phase = "PAUSE 2"
+    start_time = time.time()
+    while time.time() - start_time < pause_duration:
+        read_encoder_callback()
+
+def main():
+    global node
+    rclpy.init()
+    node = Node("motor_sequence_node")
 
     try:
-        rclpy.spin(node)
+        node.get_logger().info("Sequence starting...")
+        reset_encoder()
+
+        timeout = time.time() + 2.0
+        while not reset_confirmed and time.time() < timeout:
+            read_encoder_callback()
+
+        # Run the original forward/backward sequence
+        run_sequence()
+
+        node.get_logger().info("Sequence completed.")
+
     except KeyboardInterrupt:
-        pass
+        stop_all_motors()
+        node.get_logger().info("Interrupted by user.")
+    finally:
+        stop_all_motors()
+        node.destroy_node()
+        rclpy.shutdown()
 
-    node.get_logger().info("Shutting down motor_bridge node...")
-    ser.close()
-    node.destroy_node()
-    rclpy.shutdown()
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
