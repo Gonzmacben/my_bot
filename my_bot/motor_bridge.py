@@ -5,146 +5,149 @@ from rclpy.node import Node
 import serial
 import time
 
-# === SERIAL CONFIGURATION ===
-serial_port = '/dev/ttyACM0'  # Adjust as needed
-baud_rate = 57600
-ser = serial.Serial(serial_port, baud_rate, timeout=0.1)
+class MotorSequenceNode(Node):
+    def __init__(self):
+        super().__init__('motor_sequence_node')
 
-# === CONTROL PARAMETERS ===
-num_motors = 4
-target_rpm = 0.0
-pause_duration = 1.0  # seconds between phases
-target_counts = 3000  # encoder ticks per phase
+        # === SERIAL CONFIGURATION ===
+        self.serial_port = '/dev/ttyACM0'  # Adjust as needed
+        self.baud_rate = 57600
+        try:
+            self.ser = serial.Serial(self.serial_port, self.baud_rate, timeout=0.1)
+            time.sleep(2)  # Wait for Arduino reset
+            self.get_logger().info(f"Opened serial port {self.serial_port} at {self.baud_rate} baud")
+        except Exception as e:
+            self.get_logger().error(f"Failed to open serial port: {e}")
+            raise e
 
-# === GLOBAL VARIABLES ===
-current_encoder = [0] * num_motors
-reset_confirmed = False
-current_phase = ""
-motors_active = False  # Flag indicating if motors are active
+        # === CONTROL PARAMETERS ===
+        self.num_motors = 4
+        self.target_rpm = 0.0
+        self.pause_duration = 1.0  # seconds between phases
+        self.target_counts = 3000  # encoder ticks per phase
 
-def send_command(cmd):
-    ser.write((cmd + '\n').encode('utf-8'))
+        # === STATE VARIABLES ===
+        self.current_encoder = [0.0] * self.num_motors
+        self.reset_confirmed = False
+        self.current_phase = ""
+        self.motors_active = False
 
-def reset_encoder():
-    global reset_confirmed
-    reset_confirmed = False
-    ser.reset_input_buffer()  # Clear buffer before reset
-    send_command("RESET")
+        # Serial read buffer for incomplete lines
+        self.serial_buffer = ""
 
-def send_rpm_all(rpm):
-    global motors_active
-    rpm_cmd = ','.join([str(rpm)] * num_motors)
-    cmd = f"RPM:{rpm_cmd}"
-    send_command(cmd)
-    motors_active = (rpm != 0)
-    if motors_active:
-        node.get_logger().info(f"RPM sent to all motors: {cmd}")
+    def send_command(self, cmd):
+        try:
+            full_cmd = cmd + '\n'
+            self.ser.write(full_cmd.encode('utf-8'))
+            self.ser.flush()
+            self.get_logger().info(f"Sent command: {repr(full_cmd)}")
+            time.sleep(0.05)  # Small delay to allow Arduino to process
+        except Exception as e:
+            self.get_logger().error(f"Failed to send command '{cmd}': {e}")
 
-def stop_all_motors():
-    global motors_active
-    send_command("STOP")  
-    motors_active = False
-    node.get_logger().info("Motors stopped.")
+    def reset_encoder(self):
+        self.reset_confirmed = False
+        self.ser.reset_input_buffer()
+        self.send_command("RESET")
 
-def switch_linear_actuators():
-    send_command("SWITCH")
-    node.get_logger().info("Sent SWITCH command to linear actuators")
+    def send_rpm_all(self, rpm):
+        rpm_cmd = ','.join([str(float(rpm))] * self.num_motors)
+        cmd = f"RPM:{rpm_cmd}"
+        self.get_logger().info(f"Preparing to send RPM command: {cmd}")
+        self.send_command(cmd)
+        self.motors_active = (rpm != 0)
 
-def read_encoder_callback():
-    global current_encoder, reset_confirmed
+    def stop_all_motors(self):
+        self.send_command("STOP")
+        self.motors_active = False
+        self.get_logger().info("Motors stopped.")
+
+    def switch_linear_actuators(self):
+        self.send_command("SWITCH")
+        self.get_logger().info("Sent SWITCH command to linear actuators")
+
+    def process_line(self, line):
+        line = line.strip()
+        if not line:
+            return
+
+        self.get_logger().debug(f"Processing line: {repr(line)}")
+
+        if line == "RESET_OK":
+            self.reset_confirmed = True
+            self.get_logger().info("[INFO] RESET confirmation received")
+
+        elif line.startswith("ENC:"):
+            try:
+                values = line[4:].split(',')
+                for i in range(min(self.num_motors, len(values))):
+                    self.current_encoder[i] = float(values[i])
+                if self.motors_active:
+                    self.get_logger().info(f"[{self.current_phase}] ENC: {self.current_encoder}")
+            except Exception as e:
+                self.get_logger().warn(f"Error processing encoder line '{line}': {e}")
+
+        else:
+            self.get_logger().debug(f"Ignored line: {repr(line)}")
+
+    def read_serial_lines(self):
+        try:
+            while self.ser.in_waiting:
+                data = self.ser.read(self.ser.in_waiting).decode('utf-8', errors='ignore')
+                self.serial_buffer += data
+                while '\n' in self.serial_buffer:
+                    line, self.serial_buffer = self.serial_buffer.split('\n', 1)
+                    self.process_line(line)
+        except Exception as e:
+            self.get_logger().warn(f"Error reading serial: {e}")
+
+    def minimal_test_loop(self):
+        self.get_logger().info("Starting minimal test loop: sending RPM=45.0 for 10 seconds")
+        self.send_rpm_all(45.0)
+        start_time = time.time()
+        while time.time() - start_time < 10:
+            self.read_serial_lines()
+            time.sleep(0.1)
+        self.stop_all_motors()
+        self.get_logger().info("Minimal test loop completed.")
+
+    def run_sequence(self):
+        # Placeholder for your full motor sequence logic
+        self.get_logger().info("Full sequence not implemented in this debug node.")
+
+    def main_loop(self):
+        self.get_logger().info("Sequence starting...")
+        self.reset_encoder()
+
+        timeout = time.time() + 5.0  # 5 seconds timeout for reset confirmation
+        while not self.reset_confirmed and time.time() < timeout:
+            self.read_serial_lines()
+            time.sleep(0.05)
+
+        if not self.reset_confirmed:
+            self.get_logger().error("Reset confirmation not received! Aborting.")
+            return
+
+        # Run minimal test loop to verify RPM command sending and feedback
+        self.minimal_test_loop()
+
+        # Optionally, run your full sequence here:
+        # self.run_sequence()
+
+        self.get_logger().info("Sequence completed.")
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = MotorSequenceNode()
+
     try:
-        while ser.in_waiting:
-            line = ser.readline().decode('utf-8').strip()
-            if line == "RESET_OK":
-                reset_confirmed = True
-                node.get_logger().info("[INFO] RESET confirmation received")
-
-            elif line.startswith("ENC:"):
-                try:
-                    values = line[4:].split(',')
-                    for i in range(min(num_motors, len(values))):
-                        current_encoder[i] = float(values[i])
-                    if motors_active:
-                        node.get_logger().info(f"[{current_phase}] ENC: {current_encoder}")
-                except Exception as e:
-                    node.get_logger().warn(f"Error processing serial line '{line}': {e}")
-
-            elif line.lstrip('-').isdigit():
-                if motors_active:
-                    node.get_logger().info(f"[{current_phase}] Unknown encoder value: {line}")
-
-            else:
-                node.get_logger().debug(f"Ignored: {line}")
-    except Exception as e:
-        node.get_logger().warn(f"Error reading serial: {e}")
-
-def run_sequence():
-    global current_phase, current_encoder
-
-    # === Phase 1: Move Forward ===
-    current_phase = "MOVING FORWARD"
-    initial_encoders = current_encoder.copy()
-    send_rpm_all(target_rpm)
-
-    while all(abs(current_encoder[i] - initial_encoders[i]) < target_counts for i in range(num_motors)):
-        read_encoder_callback()
-    stop_all_motors()
-
-    # === Phase 2: Pause ===
-    current_phase = "PAUSE 1"
-    start_time = time.time()
-    while time.time() - start_time < pause_duration:
-        read_encoder_callback()
-
-    # Trigger linear actuator switch sequence
-    switch_linear_actuators()
-
-    # Wait enough time for linear actuator to complete (about 21 seconds)
-    wait_time = 25
-    node.get_logger().info(f"Waiting {wait_time} seconds for linear actuators to complete...")
-    start_wait = time.time()
-    while time.time() - start_wait < wait_time:
-        read_encoder_callback()
-        time.sleep(0.05)
-
-    # === Phase 3: Move Backward ===
-    current_phase = "MOVING BACKWARD"
-    initial_encoders = current_encoder.copy()
-    send_rpm_all(-target_rpm)
-
-    while all(abs(current_encoder[i] - initial_encoders[i]) < target_counts for i in range(num_motors)):
-        read_encoder_callback()
-    stop_all_motors()
-
-    # === Phase 4: Final Pause ===
-    current_phase = "PAUSE 2"
-    start_time = time.time()
-    while time.time() - start_time < pause_duration:
-        read_encoder_callback()
-
-def main():
-    global node
-    rclpy.init()
-    node = Node("motor_sequence_node")
-
-    try:
-        node.get_logger().info("Sequence starting...")
-        reset_encoder()
-
-        timeout = time.time() + 2.0
-        while not reset_confirmed and time.time() < timeout:
-            read_encoder_callback()
-
-        # Run the original forward/backward sequence with linear actuator switching
-        run_sequence()
-
-        node.get_logger().info("Sequence completed.")
-
+        node.main_loop()
     except KeyboardInterrupt:
-        stop_all_motors()
+        node.stop_all_motors()
         node.get_logger().info("Interrupted by user.")
     finally:
-        stop_all_motors()
+        node.stop_all_motors()
+        node.ser.close()
         node.destroy_node()
         rclpy.shutdown()
 
