@@ -3,7 +3,7 @@
 
 // Encoder counts and PID variables
 volatile long encoder_count[NUM_MOTORS] = {0};
-float target_speed_rpm[NUM_MOTORS] = {50};
+float target_speed_rpm[NUM_MOTORS] = {50,50,30};
 float integral[NUM_MOTORS] = {0};
 float prev_error[NUM_MOTORS] = {0};
 bool pid_enabled[NUM_MOTORS] = {false};
@@ -138,7 +138,7 @@ void loop() {
 
     Serial.print("ENC:");
     for (int i = 0; i < NUM_MOTORS; i++) {
-      Serial.println(encoder_count[i]);
+      Serial.println(target_speed_rpm[i]);
       if (i < NUM_MOTORS - 1) Serial.print(",");
     }
   }
