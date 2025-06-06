@@ -129,7 +129,7 @@ void loop() {
       setMotor(i, pwm);
     }
 
-    Serial.print("ENC: ");
+    Serial.print("ENC:");
     for (int i = 0; i < NUM_MOTORS; i++) {
       Serial.println(encoder_count[i]);
       if (i < NUM_MOTORS - 1) Serial.print(",");
