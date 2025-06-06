@@ -119,7 +119,7 @@ void setup() {
 
 void loop() {
   static float last_target_speed_rpm[NUM_MOTORS] = {0};
-  static long last_counts[NUM_MOTORS] = {0};  // ← persistente entre ciclos PID
+  static long last_counts[NUM_MOTORS] = {0};  // persistent between PID cycles
 
   if (Serial.available()) {
     String input = Serial.readStringUntil('\n');
@@ -178,7 +178,7 @@ void loop() {
         integral[i] = 0;
         prev_error[i] = 0;
         target_speed_rpm[i] = 0;
-        last_counts[i] = encoder_count[i];  // 🔄 sincroniza con PID
+        last_counts[i] = encoder_count[i];  // sync with PID
       }
       stopLinearActuators();
       Serial.println("STOP_OK");
@@ -229,5 +229,5 @@ void loop() {
       if (i < NUM_MOTORS - 1) Serial.print(",");
     }
     Serial.println();
-  }
+  }
 }
