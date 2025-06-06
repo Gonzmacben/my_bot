@@ -41,8 +41,8 @@ const int LINEAR_ACTUATOR_IN2[2] = {26, 28}; // Reverse control pins
 // IMU PINS MUST BE 0,1
 
 // PID constants per motor (example values)
-const float Kp[NUM_MOTORS] = {2.5, 2.5, 2.5, 2.5};
-const float Ki[NUM_MOTORS] = {0.8, 0.8, 0.8, 0.8}; // 0.8, 0.8, 0.8, 0.8
+const float Kp[NUM_MOTORS] = {2.5, 3.0, 2.5, 3.0};
+const float Ki[NUM_MOTORS] = {0.8, 0.5, 0.8, 0.5}; // 0.8, 0.8, 0.8, 0.8
 const float Kd[NUM_MOTORS] = {0.6, 0.6, 0.6, 0.6};
 const float Ko[NUM_MOTORS] = {1.0, 1.0, 1.0, 1.0};
 
