@@ -22,7 +22,7 @@ class MotorSequenceNode(Node):
 
         # === CONTROL PARAMETERS ===
         self.num_motors = 4
-        self.target_rpm = 0.0
+        self.target_rpm = 45.0
         self.pause_duration = 1.0  # seconds between phases
         self.target_counts = 3000  # encoder ticks per phase
 
@@ -101,40 +101,70 @@ class MotorSequenceNode(Node):
         except Exception as e:
             self.get_logger().warn(f"Error reading serial: {e}")
 
-    def minimal_test_loop(self):
-        self.get_logger().info("Starting minimal test loop: sending RPM=45.0 for 10 seconds")
-        self.send_rpm_all(45.0)
-        start_time = time.time()
-        while time.time() - start_time < 10:
-            self.read_serial_lines()
-            time.sleep(0.1)
-        self.stop_all_motors()
-        self.get_logger().info("Minimal test loop completed.")
+    def run_full_sequence(self):
+        self.get_logger().info("Starting full motor control sequence...")
 
-    def run_sequence(self):
-        # Placeholder for your full motor sequence logic
-        self.get_logger().info("Full sequence not implemented in this debug node.")
-
-    def main_loop(self):
-        self.get_logger().info("Sequence starting...")
+        # Reset encoders
         self.reset_encoder()
-
-        timeout = time.time() + 5.0  # 5 seconds timeout for reset confirmation
+        timeout = time.time() + 5.0
         while not self.reset_confirmed and time.time() < timeout:
             self.read_serial_lines()
             time.sleep(0.05)
-
         if not self.reset_confirmed:
-            self.get_logger().error("Reset confirmation not received! Aborting.")
+            self.get_logger().error("Failed to confirm reset, aborting sequence.")
             return
 
-        # Run minimal test loop to verify RPM command sending and feedback
-        self.minimal_test_loop()
+        # Phase 1: Move forward
+        self.current_phase = "MOVING FORWARD"
+        start_counts = self.current_encoder.copy()
+        self.send_rpm_all(self.target_rpm)
+        while any(abs(self.current_encoder[i] - start_counts[i]) < self.target_counts for i in range(self.num_motors)):
+            self.read_serial_lines()
+            time.sleep(0.05)
+        self.stop_all_motors()
+        self.get_logger().info("Phase 1 complete: Moved forward.")
 
-        # Optionally, run your full sequence here:
-        # self.run_sequence()
+        # Phase 2: Pause
+        self.current_phase = "PAUSE 1"
+        pause_start = time.time()
+        while time.time() - pause_start < self.pause_duration:
+            self.read_serial_lines()
+            time.sleep(0.05)
+        self.get_logger().info("Phase 2 complete: Pause done.")
 
-        self.get_logger().info("Sequence completed.")
+        # Phase 3: Switch linear actuators
+        self.switch_linear_actuators()
+        wait_start = time.time()
+        wait_duration = 25  # seconds
+        self.get_logger().info(f"Waiting {wait_duration}s for linear actuators to complete...")
+        while time.time() - wait_start < wait_duration:
+            self.read_serial_lines()
+            time.sleep(0.05)
+        self.get_logger().info("Phase 3 complete: Linear actuators switched.")
+
+        # Phase 4: Move backward
+        self.current_phase = "MOVING BACKWARD"
+        start_counts = self.current_encoder.copy()
+        self.send_rpm_all(-self.target_rpm)
+        while any(abs(self.current_encoder[i] - start_counts[i]) < self.target_counts for i in range(self.num_motors)):
+            self.read_serial_lines()
+            time.sleep(0.05)
+        self.stop_all_motors()
+        self.get_logger().info("Phase 4 complete: Moved backward.")
+
+        # Phase 5: Final pause
+        self.current_phase = "PAUSE 2"
+        pause_start = time.time()
+        while time.time() - pause_start < self.pause_duration:
+            self.read_serial_lines()
+            time.sleep(0.05)
+        self.get_logger().info("Phase 5 complete: Final pause done.")
+
+        self.get_logger().info("Full motor control sequence completed.")
+
+    def main_loop(self):
+        self.get_logger().info("Sequence starting...")
+        self.run_full_sequence()
 
 def main(args=None):
     rclpy.init(args=args)
