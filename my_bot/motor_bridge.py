@@ -113,7 +113,7 @@ class MotorSequenceNode(Node):
         if not self.wait_for_confirmation('reset_confirmed'):
             self.get_logger().error("Failed to confirm reset, aborting routine one.")
             return
-        /*
+
         self.switch_linear_actuators()
         wait_start = time.time()
         wait_duration = 4
@@ -163,7 +163,7 @@ class MotorSequenceNode(Node):
             self.read_serial_lines()
             time.sleep(0.05)
 
-         = self.current_encoder.copy()
+        self.current_encoder.copy()
         self.send_rpm_all(-self.target_rpm)
         while any(abs(self.current_encoder[i] - start_counts[i]) < (self.target_counts) for i in range(self.num_motors)):
             self.read_serial_lines()
