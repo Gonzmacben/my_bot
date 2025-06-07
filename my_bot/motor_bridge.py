@@ -59,16 +59,19 @@ class MotorSequenceNode(Node):
         self.motors_active = False
         self.get_logger().info("Sent STOP command, waiting for STOP_OK")
 
+    # Inverted actuator commands:
     def switch_linear_actuators(self):
-        self.get_logger().info("Sending SWITCH command to extend actuators")
-        self.ser.reset_input_buffer()
-        self.send_command("SWITCH")
-        time.sleep(0.1)  # Small delay to ensure command is processed
-
-    def switch_linear_actuators_back(self):
-        self.get_logger().info("Sending SWITCH_BACK command to retract actuators")
+        # Send SWITCH_BACK to extend actuators (inverted)
+        self.get_logger().info("Sending SWITCH_BACK command to extend actuators (inverted)")
         self.ser.reset_input_buffer()
         self.send_command("SWITCH_BACK")
+        time.sleep(0.1)
+
+    def switch_linear_actuators_back(self):
+        # Send SWITCH to retract actuators (inverted)
+        self.get_logger().info("Sending SWITCH command to retract actuators (inverted)")
+        self.ser.reset_input_buffer()
+        self.send_command("SWITCH")
         time.sleep(0.1)
 
     def process_line(self, line):
@@ -191,156 +194,6 @@ class MotorSequenceNode(Node):
         self.move_distance(self.target_counts // 2, -self.target_rpm, "MOVING BACKWARD - FINAL")
 
         self.get_logger().info("Routine Two completed")
-
-def main(args=None):
-    rclpy.init(args=args)
-    node = MotorSequenceNode()
-
-    try:
-        node.get_logger().info("Calling routine one...")
-        node.routine_one()
-        node.get_logger().info("Waiting 10 seconds before starting routine two...")
-        for i in range(100):  # 10 seconds, print a dot every 0.1s
-            time.sleep(0.1)
-            if i % 10 == 0:
-                node.get_logger().info(".")
-            node.read_serial_lines()
-        node.get_logger().info("Calling routine two...")
-        node.routine_two()
-    except KeyboardInterrupt:
-        node.stop_all_motors()
-        node.get_logger().info("Interrupted by user.")
-    finally:
-        node.stop_all_motors()
-        node.ser.close()
-        node.destroy_node()
-        rclpy.shutdown()
-
-if __name__ == '__main__':
-    main()
-
-    def routine_one(self):
-        self.get_logger().info("Starting the first routine...")
-        self.reset_encoder()
-        if not self.wait_for_confirmation('reset_confirmed'):
-            self.get_logger().error("Failed to confirm reset, aborting routine one.")
-            return
-
-        self.switch_linear_actuators()
-        wait_start = time.time()
-        wait_duration = 4
-        self.get_logger().info(f"Waiting {wait_duration}s for linear actuators to complete forward switch...")
-        while time.time() - wait_start < wait_duration:
-            self.read_serial_lines()
-            time.sleep(0.05)
-
-        self.current_phase = "MOVING FORWARD"
-        start_counts = self.current_encoder.copy()
-        self.send_rpm_all(self.target_rpm)
-        while any(abs(self.current_encoder[i] - start_counts[i]) < (self.target_counts*2) for i in range(self.num_motors)):
-            self.read_serial_lines()
-            time.sleep(0.05)
-        self.stop_all_motors()
-
-        self.current_phase = "MOVING BACKWARD"
-        start_counts = self.current_encoder.copy()
-        self.send_rpm_all(-self.target_rpm)
-        while any(abs(self.current_encoder[i] - start_counts[i]) < (self.target_counts*2) for i in range(self.num_motors)):
-            self.read_serial_lines()
-            time.sleep(0.05)
-        self.stop_all_motors()
-
-        self.switch_linear_actuators_back()
-        wait_start = time.time()
-        self.get_logger().info(f"Waiting {wait_duration}s for linear actuators to complete reverse switch...")
-        while time.time() - wait_start < wait_duration:
-            self.read_serial_lines()
-            time.sleep(0.05)
-
-    def routine_two(self):
-        self.get_logger().info("Starting the second routine...")
-        self.reset_encoder()
-        if not self.wait_for_confirmation('reset_confirmed'):
-            self.get_logger().error("Failed to confirm reset, aborting routine two.")
-            return
-
-        self.switch_linear_actuators()
-        wait_start = time.time()
-        wait_duration = 4
-        self.get_logger().info(f"Waiting {wait_duration}s for linear actuators to complete forward switch...")
-        while time.time() - wait_start < wait_duration:
-            self.read_serial_lines()
-            time.sleep(0.05)
-
-        self.current_phase = "MOVING FORWARD"
-        start_counts = self.current_encoder.copy()
-        self.send_rpm_all(self.target_rpm)
-        while any(abs(self.current_encoder[i] - start_counts[i]) < (self.target_counts*2) for i in range(self.num_motors)):
-            self.read_serial_lines()
-            time.sleep(0.05)
-        self.stop_all_motors()
-
-        self.switch_linear_actuators_back()
-        wait_start = time.time()
-        self.get_logger().info(f"Waiting {wait_duration}s for linear actuators to complete reverse switch...")
-        while time.time() - wait_start < wait_duration:
-            self.read_serial_lines()
-            time.sleep(0.05)
-
-        self.current_phase = "MOVING FORWARD"
-        start_counts = self.current_encoder.copy()
-        self.send_rpm_all(self.target_rpm)
-        while any(abs(self.current_encoder[i] - start_counts[i]) < (self.target_counts*0.3) for i in range(self.num_motors)):
-            self.read_serial_lines()
-            time.sleep(0.05)
-        self.stop_all_motors()
-
-        self.switch_linear_actuators()
-        wait_start = time.time()
-        wait_duration = 4
-        self.get_logger().info(f"Waiting {wait_duration}s for linear actuators to complete forward switch...")
-        while time.time() - wait_start < wait_duration:
-            self.read_serial_lines()
-            time.sleep(0.05)
-        
-        self.current_phase = "MOVING BACKWARD"
-        start_counts = self.current_encoder.copy()
-        self.send_rpm_all(-self.target_rpm)
-        while any(abs(self.current_encoder[i] - start_counts[i]) < (self.target_counts) for i in range(self.num_motors)):
-            self.read_serial_lines()
-            time.sleep(0.05)
-        self.stop_all_motors()
-
-        self.switch_linear_actuators_back()
-        wait_start = time.time()
-        self.get_logger().info(f"Waiting {wait_duration}s for linear actuators to complete reverse switch...")
-        while time.time() - wait_start < wait_duration:
-            self.read_serial_lines()
-            time.sleep(0.05)
-
-        self.current_phase = "MOVING BACKWARD"
-        start_counts = self.current_encoder.copy()
-        self.send_rpm_all(-self.target_rpm)
-        while any(abs(self.current_encoder[i] - start_counts[i]) < (self.target_counts*0.3) for i in range(self.num_motors)):
-            self.read_serial_lines()
-            time.sleep(0.05)
-        self.stop_all_motors()
-
-        self.switch_linear_actuators()
-        wait_start = time.time()
-        wait_duration = 4
-        self.get_logger().info(f"Waiting {wait_duration}s for linear actuators to complete forward switch...")
-        while time.time() - wait_start < wait_duration:
-            self.read_serial_lines()
-            time.sleep(0.05)
-
-        self.current_phase = "MOVING BACKWARD"
-        start_counts = self.current_encoder.copy()
-        self.send_rpm_all(-self.target_rpm)
-        while any(abs(self.current_encoder[i] - start_counts[i]) < (self.target_counts) for i in range(self.num_motors)):
-            self.read_serial_lines()
-            time.sleep(0.05)
-        self.stop_all_motors()
 
 def main(args=None):
     rclpy.init(args=args)
